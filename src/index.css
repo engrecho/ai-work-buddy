@@ -1,0 +1,601 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+ 
+    --primary: 74 79% 57%;
+    --primary-foreground: 74 60% 15%;
+ 
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+ 
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+ 
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+ 
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 74 79% 57%;
+ 
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+ 
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 74 79% 57%;
+    --primary-foreground: 74 60% 15%;
+ 
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+ 
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Tiptap 编辑器内部样式（ProseMirror）
+   ═══════════════════════════════════════════════════════════ */
+.ProseMirror {
+  outline: none;
+  min-height: 120px;
+  padding: 8px 12px;
+  line-height: 1.7;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #9ca3af;
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+  color: #111827;
+  line-height: 1.3;
+}
+
+.ProseMirror h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0.875rem 0 0.5rem;
+  color: #111827;
+  line-height: 1.35;
+}
+
+.ProseMirror h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.375rem;
+  color: #111827;
+  line-height: 1.4;
+}
+
+.ProseMirror p {
+  margin: 0.375rem 0;
+  line-height: 1.7;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror li {
+  margin: 0.25rem 0;
+  line-height: 1.6;
+}
+
+.ProseMirror li > p {
+  margin: 0;
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 1rem;
+  color: #6b7280;
+  margin: 0.75rem 0;
+  font-style: italic;
+}
+
+.ProseMirror strong {
+  font-weight: 700;
+  color: #111827;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+.ProseMirror u {
+  text-decoration: underline;
+}
+
+.ProseMirror s {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.ProseMirror a {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ProseMirror a:hover {
+  color: #1d4ed8;
+}
+
+.ProseMirror code {
+  background: #f3f4f6;
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.875em;
+  font-family: ui-monospace, monospace;
+  color: #dc2626;
+}
+
+.ProseMirror pre {
+  background: #1f2937;
+  color: #f9fafb;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  font-size: 0.875rem;
+}
+
+.ProseMirror pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1rem 0;
+}
+
+/* 编辑器内图片 */
+.ProseMirror img {
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  margin: 8px 0;
+  cursor: pointer;
+}
+
+/* 文字对齐 */
+.ProseMirror [style*="text-align: center"],
+.ProseMirror .text-center { text-align: center; }
+.ProseMirror [style*="text-align: right"],
+.ProseMirror .text-right { text-align: right; }
+.ProseMirror [style*="text-align: left"],
+.ProseMirror .text-left { text-align: left; }
+
+/* ═══════════════════════════════════════════════════════════
+   TaskList / TaskItem 任务清单样式
+   ═══════════════════════════════════════════════════════════ */
+/* 编辑器内的任务清单（覆盖默认 ul 样式） */
+.ProseMirror ul[data-type="taskList"],
+.ProseMirror .task-list {
+  list-style: none !important;
+  padding-left: 0 !important;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror li[data-type="taskItem"],
+.ProseMirror .task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 3px 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.ProseMirror li[data-type="taskItem"]:hover,
+.ProseMirror .task-item:hover {
+  background: #f9fafb;
+}
+
+/* label 包含 checkbox + 文字内容 */
+.ProseMirror li[data-type="taskItem"] > label,
+.ProseMirror .task-item > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  width: 100%;
+  user-select: none;
+}
+
+/* checkbox 样式 */
+.ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"],
+.ProseMirror .task-item > label > input[type="checkbox"] {
+  margin-top: 3px;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1.5px solid #d1d5db;
+  cursor: pointer;
+  accent-color: #5a7a00;
+  appearance: auto;
+}
+
+/* 已勾选时文字样式（通过 data-checked 属性或 label 内的 div） */
+.ProseMirror li[data-type="taskItem"][data-checked="true"] > label > div,
+.ProseMirror li[data-type="taskItem"][data-checked="true"] > label > p,
+.ProseMirror .task-item[data-checked="true"] > label > div,
+.ProseMirror .task-item[data-checked="true"] > label > p {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+/* 文字容器 */
+.ProseMirror li[data-type="taskItem"] > label > div,
+.ProseMirror .task-item > label > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.ProseMirror li[data-type="taskItem"] > label > div > p,
+.ProseMirror .task-item > label > div > p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* 嵌套任务清单 */
+.ProseMirror li[data-type="taskItem"] ul[data-type="taskList"],
+.ProseMirror .task-item .task-list {
+  margin-top: 4px;
+  margin-left: 8px;
+}
+
+/* rich-content（只读展示）中的任务清单
+   需要覆盖 .rich-content ul 的 list-style: disc 和 padding-left */
+.rich-content ul[data-type="taskList"],
+.rich-content .task-list {
+  list-style: none !important;
+  padding-left: 0 !important;
+  margin: 0.5rem 0;
+}
+
+.rich-content li[data-type="taskItem"],
+.rich-content .task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 3px 0;
+  padding: 2px 4px;
+}
+
+.rich-content li[data-type="taskItem"] > label,
+.rich-content .task-item > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.rich-content li[data-type="taskItem"] > label > input[type="checkbox"],
+.rich-content .task-item > label > input[type="checkbox"] {
+  margin-top: 3px;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  accent-color: #5a7a00;
+  pointer-events: none;
+}
+
+.rich-content li[data-type="taskItem"][data-checked="true"] > label > div,
+.rich-content li[data-type="taskItem"][data-checked="true"] > label > p,
+.rich-content .task-item[data-checked="true"] > label > div,
+.rich-content .task-item[data-checked="true"] > label > p {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.rich-content li[data-type="taskItem"] > label > div,
+.rich-content .task-item > label > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.rich-content li[data-type="taskItem"] > label > div > p,
+.rich-content .task-item > label > div > p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   富文本内容展示样式（.rich-content）
+   用于 dangerouslySetInnerHTML 渲染已保存的 HTML 内容
+   ═══════════════════════════════════════════════════════════ */
+.rich-content {
+  line-height: 1.7;
+  color: #374151;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.rich-content h1 {
+  font-size: 1.375rem;
+  font-weight: 700;
+  margin: 0.875rem 0 0.5rem;
+  color: #111827;
+  line-height: 1.3;
+}
+
+.rich-content h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.375rem;
+  color: #111827;
+  line-height: 1.35;
+}
+
+.rich-content h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0.625rem 0 0.25rem;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.rich-content p {
+  margin: 0.375rem 0;
+  line-height: 1.7;
+}
+
+.rich-content ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.rich-content ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.rich-content li {
+  margin: 0.2rem 0;
+  line-height: 1.6;
+}
+
+.rich-content li > p {
+  margin: 0;
+}
+
+.rich-content blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 1rem;
+  color: #6b7280;
+  margin: 0.625rem 0;
+  font-style: italic;
+}
+
+.rich-content strong,
+.rich-content b {
+  font-weight: 700;
+  color: #111827;
+}
+
+.rich-content em,
+.rich-content i {
+  font-style: italic;
+}
+
+.rich-content u {
+  text-decoration: underline;
+}
+
+.rich-content s,
+.rich-content del {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.rich-content a {
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.rich-content a:hover {
+  color: #1d4ed8;
+}
+
+.rich-content code {
+  background: #f3f4f6;
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.875em;
+  font-family: ui-monospace, monospace;
+  color: #dc2626;
+}
+
+.rich-content pre {
+  background: #1f2937;
+  color: #f9fafb;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  font-size: 0.875rem;
+}
+
+.rich-content pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+.rich-content hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 0.875rem 0;
+}
+
+/* 图片：自适应宽度，不被截断 */
+.rich-content img {
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  margin: 8px 0;
+}
+
+/* 文字对齐 */
+.rich-content [style*="text-align: center"] { text-align: center; }
+.rich-content [style*="text-align: right"] { text-align: right; }
+.rich-content [style*="text-align: left"] { text-align: left; }
+
+/* 首尾元素去掉多余 margin */
+.rich-content > *:first-child { margin-top: 0; }
+.rich-content > *:last-child { margin-bottom: 0; }
+
+/* 卡片预览模式：限制高度，图片不被 line-clamp 截断 */
+.rich-content-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rich-content-preview img {
+  display: none; /* 预览模式隐藏图片，避免撑开卡片 */
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .rich-content img {
+    max-width: 100%;
+    border-radius: 4px;
+  }
+  .rich-content h1 { font-size: 1.2rem; }
+  .rich-content h2 { font-size: 1.1rem; }
+  .rich-content h3 { font-size: 1rem; }
+  .ProseMirror { padding: 6px 10px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TaskMention Chip — 富文本内嵌任务引用标签
+   ═══════════════════════════════════════════════════════════ */
+.task-mention-chip {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 1px 6px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+  user-select: none;
+  vertical-align: middle;
+  border: 1px solid #e5e7eb;
+  line-height: 1.6;
+  margin: 0 2px;
+  background-color: #f9fafb;
+  color: #6b7280;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: box-shadow 0.15s;
+}
+
+.task-mention-chip:hover {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* 选中状态 */
+.ProseMirror .task-mention-chip.ProseMirror-selectednode {
+  outline: 2px solid #bbea3b;
+  outline-offset: 1px;
+}
+
+/* 不同状态的颜色变体 */
+.task-mention-chip[data-task-status="done"] {
+  background-color: #f0fdf4;
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+
+.task-mention-chip[data-task-status="in_progress"] {
+  background-color: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+/* 只读展示中也生效 */
+.rich-content .task-mention-chip {
+  pointer-events: none;
+}
