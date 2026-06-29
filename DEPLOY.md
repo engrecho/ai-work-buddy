@@ -28,8 +28,11 @@
 | MySQL 数据库 `buddy` 已创建 | ✅ |
 | 数据库用户 `buddy` / 密码 `NX62WP4bDJikBNih` | ✅ |
 | Node.js 18+ 已安装 | 需确认 |
+| Yarn 已安装 | 需确认 |
 
 > 在宝塔面板 → 软件商店 → 搜索「Node.js 版本管理器」→ 安装 Node.js 18
+>
+> 安装 Yarn：`npm install -g yarn`
 
 ---
 
@@ -100,7 +103,7 @@ PORT=3000
 
 ```bash
 cd /www/wwwroot/buddy.bajiaolu.cn/server
-npm install
+yarn install
 ```
 
 ### 测试启动
@@ -123,7 +126,7 @@ curl http://127.0.0.1:3000/api/task_groups
 
 ```bash
 # 如果未安装 PM2
-npm install -g pm2
+yarn global add pm2
 
 cd /www/wwwroot/buddy.bajiaolu.cn
 pm2 start ecosystem.config.cjs
@@ -154,10 +157,10 @@ sudo systemctl status ai-work-buddy
 cd /www/wwwroot/buddy.bajiaolu.cn
 
 # 安装前端依赖
-npm install
+yarn install
 
 # 构建生产版本
-npm run build
+yarn build
 ```
 
 构建产物在 `build/` 目录中。
@@ -263,12 +266,12 @@ else
 fi
 
 # 安装前端依赖并构建
-npm install
-npm run build
+yarn install
+yarn build
 
 # 安装后端依赖
 cd $PROJECT_DIR/server
-npm install
+yarn install
 
 # 重启后端服务
 pm2 restart ai-work-buddy-api 2>/dev/null || pm2 start $PROJECT_DIR/ecosystem.config.cjs
@@ -297,13 +300,13 @@ cd /www/wwwroot/buddy.bajiaolu.cn
 git pull origin main
 
 # 如果前端依赖有变化
-npm install
+yarn install
 
 # 重新构建前端
-npm run build
+yarn build
 
 # 如果后端依赖有变化
-cd server && npm install
+cd server && yarn install
 
 # 重启后端
 pm2 restart ai-work-buddy-api
@@ -333,7 +336,7 @@ tail -f /www/wwwlogs/buddy.bajiaolu.cn.error.log
 ```bash
 # 检查 build 目录
 ls -la /www/wwwroot/buddy.bajiaolu.cn/build/
-# 如果为空，重新执行 npm run build
+# 如果为空，重新执行 yarn build
 ```
 
 ### Q: API 请求 404

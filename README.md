@@ -8,7 +8,11 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 nvm install 18
 nvm use 18
 ```
+## Yarn 安装
+```
+npm install -g yarn
+```
 ## 启动开发服务器
 ```
-npm run dev
+yarn dev
 ```
