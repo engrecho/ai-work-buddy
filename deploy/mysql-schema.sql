@@ -113,7 +113,7 @@ CREATE TABLE `memos` (
     `related_task_ids` JSON,
     `reading_item_id` VARCHAR(255),
     `tag_ids` JSON,
-    `tags` TEXT DEFAULT '',
+    `tags` TEXT,
     `deleted_at` TIMESTAMP NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -162,7 +162,7 @@ DROP TABLE IF EXISTS `quick_notes`;
 CREATE TABLE `quick_notes` (
     `id` BIGINT NOT NULL PRIMARY KEY,
     `content` TEXT NOT NULL,
-    `tags` TEXT DEFAULT '',
+    `tags` TEXT,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_quick_notes_created_at` (`created_at` DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
