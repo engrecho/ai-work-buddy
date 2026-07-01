@@ -315,6 +315,12 @@ app.patch('/api/:table', async (req, res) => {
       }
     }
 
+    // 自动更新 updated_at（替代 MySQL 触发器）
+    const TABLES_WITH_UPDATED_AT = ['tasks', 'task_groups', 'memos', 'task_notes'];
+    if (TABLES_WITH_UPDATED_AT.includes(table) && !patch.updated_at) {
+      setColumns.push('`updated_at` = CURRENT_TIMESTAMP');
+    }
+
     if (setColumns.length === 0) {
       return res.json({ data: null, error: { message: 'No valid columns to update' } });
     }

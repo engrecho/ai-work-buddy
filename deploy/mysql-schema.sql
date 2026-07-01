@@ -170,48 +170,9 @@ CREATE TABLE `quick_notes` (
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================
--- 自动更新 updated_at 触发器
--- 当 UPDATE 未包含 updated_at 时自动更新
+-- 注意: updated_at 由后端应用层自动更新（见 server/index.js）
+-- 不使用 MySQL 触发器，避免需要 SUPER 权限
 -- ============================================================
-DROP TRIGGER IF EXISTS trg_tasks_updated;
-CREATE TRIGGER trg_tasks_updated
-BEFORE UPDATE ON `tasks`
-FOR EACH ROW
-BEGIN
-    IF NEW.updated_at = OLD.updated_at THEN
-        SET NEW.updated_at = CURRENT_TIMESTAMP;
-    END IF;
-END;
-
-DROP TRIGGER IF EXISTS trg_task_groups_updated;
-CREATE TRIGGER trg_task_groups_updated
-BEFORE UPDATE ON `task_groups`
-FOR EACH ROW
-BEGIN
-    IF NEW.updated_at = OLD.updated_at THEN
-        SET NEW.updated_at = CURRENT_TIMESTAMP;
-    END IF;
-END;
-
-DROP TRIGGER IF EXISTS trg_memos_updated;
-CREATE TRIGGER trg_memos_updated
-BEFORE UPDATE ON `memos`
-FOR EACH ROW
-BEGIN
-    IF NEW.updated_at = OLD.updated_at THEN
-        SET NEW.updated_at = CURRENT_TIMESTAMP;
-    END IF;
-END;
-
-DROP TRIGGER IF EXISTS trg_task_notes_updated;
-CREATE TRIGGER trg_task_notes_updated
-BEFORE UPDATE ON `task_notes`
-FOR EACH ROW
-BEGIN
-    IF NEW.updated_at = OLD.updated_at THEN
-        SET NEW.updated_at = CURRENT_TIMESTAMP;
-    END IF;
-END;
 
 -- ============================================================
 -- 初始数据：预设任务分组
