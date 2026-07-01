@@ -11,6 +11,8 @@ export const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   charset: 'utf8mb4',
+  // 自动将 ISO 8601 日期字符串转换为 MySQL 格式
+  dateStrings: false,
 });
 
 // ── 表结构定义（用于列名验证和 SQL 注入防护）──────────────
@@ -61,4 +63,23 @@ export const JSON_COLUMNS = {
   memos: ['related_task_ids', 'tag_ids'],
   task_notes: ['related_task_ids'],
   reading_items: ['tags'],
+};
+
+// ── DATETIME/TIMESTAMP 列（需要日期格式转换）────────────────
+export const DATETIME_COLUMNS = {
+  tasks: ['due_date', 'plan_date', 'created_at', 'updated_at'],
+  task_groups: ['created_at', 'updated_at'],
+  task_members: ['created_at'],
+  task_tags: ['created_at'],
+  task_comments: ['created_at'],
+  memos: ['deleted_at', 'created_at', 'updated_at'],
+  task_notes: ['created_at', 'updated_at'],
+  reading_items: ['deleted_at', 'created_at'],
+  quick_notes: ['created_at'],
+};
+
+// ── BOOLEAN 列（TINYINT(1)，需要 0/1 ↔ true/false 转换）─────
+export const BOOLEAN_COLUMNS = {
+  tasks: ['is_project', 'need_report'],
+  reading_items: ['is_read', 'is_starred'],
 };

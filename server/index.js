@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { pool, TABLE_COLUMNS, JSON_COLUMNS } from './db.js';
+import { pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 从项目根目录加载 .env
@@ -33,15 +33,108 @@ function escapeId(name) {
   return '`' + String(name).replace(/`/g, '``') + '`';
 }
 
-// ── 准备值（JSON 列 stringify，布尔转 0/1）──────────────────
+// ── ISO 8601 → MySQL datetime 转换 ──────────────────────────
+// "2026-07-01T17:06:28.081Z" → "2026-07-01 17:06:28"
+// "2026-07-01T17:06:28Z"     → "2026-07-01 17:06:28"
+// "2026-07-01"               → "2026-07-01 00:00:00" (纯日期补全时间)
+function isoToMysqlDatetime(value) {
+  if (typeof value !== 'string') return value;
+  // 匹配 ISO 8601 格式: 2026-07-01T17:06:28.081Z 或 2026-07-01T17:06:28Z
+  const isoMatch = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d+)?Z?$/);
+  if (isoMatch) {
+    return `${isoMatch[1]} ${isoMatch[2]}`;
+  }
+  // 纯日期: 2026-07-01
+  const dateOnlyMatch = value.match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (dateOnlyMatch) {
+    return `${dateOnlyMatch[1]} 00:00:00`;
+  }
+  return value;
+}
+
+// ── MySQL datetime → ISO 8601 转换 ──────────────────────────
+// "2026-07-01 17:06:28" → "2026-07-01T17:06:28.000Z"
+// "2026-07-01"          → "2026-07-01T00:00:00.000Z"
+function mysqlDatetimeToIso(value) {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value !== 'string') return value;
+  // 匹配 MySQL datetime: 2026-07-01 17:06:28 或 2026-07-01 17:06:28.000
+  const dtMatch = value.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(\.\d+)?$/);
+  if (dtMatch) {
+    const iso = `${dtMatch[1]}T${dtMatch[2]}.000Z`;
+    return iso;
+  }
+  // 纯日期: 2026-07-01
+  const dateOnlyMatch = value.match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (dateOnlyMatch) {
+    return `${dateOnlyMatch[1]}T00:00:00.000Z`;
+  }
+  return value;
+}
+
+// ── 准备值（写入数据库前的转换）──────────────────────────────
+// 1. 布尔值 → 0/1
+// 2. ISO 8601 日期 → MySQL datetime
+// 3. JSON 对象 → JSON 字符串
 function prepareValue(table, column, value) {
   if (value === undefined) return null;
   if (value === null) return null;
-  if (typeof value === 'boolean') return value ? 1 : 0;
+
+  // 布尔列: true/false → 1/0
+  if (BOOLEAN_COLUMNS[table]?.includes(column)) {
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (typeof value === 'number') return value ? 1 : 0;
+  }
+
+  // 日期列: ISO 8601 → MySQL datetime
+  if (DATETIME_COLUMNS[table]?.includes(column)) {
+    return isoToMysqlDatetime(value);
+  }
+
+  // JSON 列: 对象 → JSON 字符串
   if (JSON_COLUMNS[table]?.includes(column) && typeof value === 'object') {
     return JSON.stringify(value);
   }
+
   return value;
+}
+
+// ── 转换 MySQL 行数据（返回给前端前的转换）──────────────────
+// 1. JSON 字符串 → 对象
+// 2. MySQL datetime → ISO 8601
+// 3. TINYINT(1) 0/1 → true/false
+function transformRow(table, row) {
+  if (!row) return row;
+
+  // JSON 列: 字符串 → 对象
+  for (const col of (JSON_COLUMNS[table] || [])) {
+    if (row[col] !== null && typeof row[col] === 'string') {
+      try {
+        row[col] = JSON.parse(row[col]);
+      } catch {
+        // 保留原始字符串
+      }
+    }
+  }
+
+  // 日期列: MySQL datetime → ISO 8601
+  for (const col of (DATETIME_COLUMNS[table] || [])) {
+    if (row[col] !== null && row[col] !== undefined) {
+      row[col] = mysqlDatetimeToIso(row[col]);
+    }
+  }
+
+  // 布尔列: 0/1 → true/false
+  for (const col of (BOOLEAN_COLUMNS[table] || [])) {
+    if (row[col] !== null && row[col] !== undefined) {
+      row[col] = row[col] === 1 || row[col] === true;
+    }
+  }
+
+  return row;
 }
 
 // ── 解析过滤器 ──────────────────────────────────────────────
@@ -78,7 +171,12 @@ function parseFilters(filterArray, table) {
           params.push(value ? 1 : 0);
         } else {
           conditions.push(`${col} = ?`);
-          params.push(value);
+          // 日期列需要格式转换
+          if (DATETIME_COLUMNS[table]?.includes(column)) {
+            params.push(isoToMysqlDatetime(value));
+          } else {
+            params.push(value);
+          }
         }
         break;
       case 'neq':
@@ -107,19 +205,35 @@ function parseFilters(filterArray, table) {
         break;
       case 'gt':
         conditions.push(`${col} > ?`);
-        params.push(value);
+        if (DATETIME_COLUMNS[table]?.includes(column)) {
+          params.push(isoToMysqlDatetime(value));
+        } else {
+          params.push(value);
+        }
         break;
       case 'gte':
         conditions.push(`${col} >= ?`);
-        params.push(value);
+        if (DATETIME_COLUMNS[table]?.includes(column)) {
+          params.push(isoToMysqlDatetime(value));
+        } else {
+          params.push(value);
+        }
         break;
       case 'lt':
         conditions.push(`${col} < ?`);
-        params.push(value);
+        if (DATETIME_COLUMNS[table]?.includes(column)) {
+          params.push(isoToMysqlDatetime(value));
+        } else {
+          params.push(value);
+        }
         break;
       case 'lte':
         conditions.push(`${col} <= ?`);
-        params.push(value);
+        if (DATETIME_COLUMNS[table]?.includes(column)) {
+          params.push(isoToMysqlDatetime(value));
+        } else {
+          params.push(value);
+        }
         break;
       case 'like':
         conditions.push(`${col} LIKE ?`);
@@ -151,23 +265,6 @@ function parseSelect(selectStr, table) {
   const valid = columns.filter(c => validateColumn(table, c));
   if (valid.length === 0) return '*';
   return valid.map(c => escapeId(c)).join(', ');
-}
-
-// ── 转换 MySQL 行数据 ──────────────────────────────────────
-// 解析 JSON 列，转换 TINYINT 为 boolean
-function transformRow(table, row) {
-  if (!row) return row;
-  for (const col of (JSON_COLUMNS[table] || [])) {
-    if (row[col] !== null && typeof row[col] === 'string') {
-      try {
-        row[col] = JSON.parse(row[col]);
-      } catch {
-        // 保留原始字符串
-      }
-    }
-  }
-  // TINYINT(1) 列保持 0/1，前端代码用 !value 判断，兼容
-  return row;
 }
 
 // ════════════════════════════════════════════════════════════
