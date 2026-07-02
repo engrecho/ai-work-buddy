@@ -237,3 +237,60 @@ export async function getCurrentUser(userId) {
   if (rows.length === 0) return null;
   return rows[0];
 }
+
+// 更新用户资料（昵称、头像）
+export async function updateUserProfile(userId, { nickname, avatar_url }) {
+  const updates = [];
+  const params = [];
+
+  if (nickname !== undefined) {
+    updates.push('nickname = ?');
+    params.push(nickname);
+  }
+  if (avatar_url !== undefined) {
+    updates.push('avatar_url = ?');
+    params.push(avatar_url);
+  }
+
+  if (updates.length === 0) {
+    throw new Error('没有需要更新的字段');
+  }
+
+  params.push(userId);
+  await pool.query(
+    `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+    params
+  );
+
+  return getCurrentUser(userId);
+}
+
+// 修改密码
+export async function changePassword(userId, oldPassword, newPassword) {
+  // 验证旧密码
+  const [rows] = await pool.query(
+    'SELECT password_hash FROM users WHERE id = ? LIMIT 1',
+    [userId]
+  );
+  if (rows.length === 0) {
+    throw new Error('用户不存在');
+  }
+
+  const isValid = await verifyPassword(oldPassword, rows[0].password_hash);
+  if (!isValid) {
+    throw new Error('原密码错误');
+  }
+
+  // 验证新密码强度
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('新密码至少 6 个字符');
+  }
+
+  const newPasswordHash = await hashPassword(newPassword);
+  await pool.query(
+    'UPDATE users SET password_hash = ? WHERE id = ?',
+    [newPasswordHash, userId]
+  );
+
+  return { success: true };
+}

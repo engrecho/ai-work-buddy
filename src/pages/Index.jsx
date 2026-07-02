@@ -6,6 +6,7 @@ import ReadingPage from './ReadingPage';
 import DashboardPage from './DashboardPage';
 import { ConfigContent } from '@/components/ConfigSection';
 import NoteView from '@/components/NoteView';
+import { UserSettingsDialog } from '@/components/UserSettingsDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 
@@ -363,6 +364,7 @@ const Index = () => {
   const [pendingTaskId, setPendingTaskId] = useState(null);
   const [floatNoteOpen, setFloatNoteOpen] = useState(false);
   const [floatTasks, setFloatTasks] = useState([]);
+  const [userSettingsOpen, setUserSettingsOpen] = useState(false);
 
   const { user, logout } = useAuth();
 
@@ -423,9 +425,19 @@ const Index = () => {
           {new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
         </span>
         {user && (
-          <Button variant='ghost' size='sm' onClick={handleLogout} className='ml-2 h-7 px-2 text-gray-500' title='登出'>
-            <LogOut className='h-3.5 w-3.5' />
-          </Button>
+          <div className='flex items-center gap-1 ml-2'>
+            <button
+              onClick={() => setUserSettingsOpen(true)}
+              className='w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-semibold overflow-hidden'
+              title='个人设置'
+            >
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
+              ) : (
+                (user.nickname || user.username || 'U')[0].toUpperCase()
+              )}
+            </button>
+          </div>
         )}
       </header>
 
@@ -450,10 +462,19 @@ const Index = () => {
           </span>
           {user && (
             <div className='flex items-center gap-2 ml-2 pl-3 border-l border-gray-200'>
-              <div className='w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-semibold'>
-                {(user.nickname || user.username || 'U')[0].toUpperCase()}
-              </div>
-              <span className='text-sm text-gray-700'>{user.nickname || user.username}</span>
+              <button
+                onClick={() => setUserSettingsOpen(true)}
+                className='flex items-center gap-2 hover:bg-gray-50 rounded-lg px-2 py-1 -mx-2 transition-colors'
+              >
+                <div className='w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-semibold overflow-hidden'>
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
+                  ) : (
+                    (user.nickname || user.username || 'U')[0].toUpperCase()
+                  )}
+                </div>
+                <span className='text-sm text-gray-700'>{user.nickname || user.username}</span>
+              </button>
               <Button variant='ghost' size='sm' onClick={handleLogout} className='h-7 px-2 text-gray-500 hover:text-red-500' title='登出'>
                 <LogOut className='h-3.5 w-3.5' />
               </Button>
@@ -543,6 +564,12 @@ const Index = () => {
         onClose={() => setFloatNoteOpen(false)}
         tasks={floatTasks}
         onSelectTask={null}
+      />
+
+      {/* ══ 用户设置弹窗 ══ */}
+      <UserSettingsDialog
+        open={userSettingsOpen}
+        onOpenChange={setUserSettingsOpen}
       />
     </div>
   );

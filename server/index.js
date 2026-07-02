@@ -9,7 +9,8 @@ import {
 } from './db.js';
 import {
   authMiddleware, optionalAuthMiddleware, generateToken,
-  setAuthCookie, clearAuthCookie, registerUser, loginUser, getCurrentUser
+  setAuthCookie, clearAuthCookie, registerUser, loginUser, getCurrentUser,
+  updateUserProfile, changePassword
 } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,6 +84,31 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
       return res.json({ data: null, error: { message: '用户不存在' } });
     }
     return res.json({ data: user, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 更新用户资料（需要登录）
+app.patch('/api/auth/profile', authMiddleware, async (req, res) => {
+  try {
+    const { nickname, avatar_url } = req.body;
+    const user = await updateUserProfile(req.user.id, { nickname, avatar_url });
+    return res.json({ data: user, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 修改密码（需要登录）
+app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { old_password, new_password } = req.body;
+    if (!old_password || !new_password) {
+      return res.json({ data: null, error: { message: '请输入原密码和新密码' } });
+    }
+    const result = await changePassword(req.user.id, old_password, new_password);
+    return res.json({ data: result, error: null });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }
