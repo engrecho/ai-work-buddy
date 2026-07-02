@@ -1,12 +1,12 @@
-# AI Work Buddy
+# AI-buddy
 
 > 一个开源的个人/团队任务与知识管理工具，支持看板任务、备忘录、阅读收藏、随记与梳理文档。
 
-![Logo](public/logo.png)
+<img src="public/logo.png" width="128" alt="AI-buddy Logo">
 
 ## 一句话简介
 
-AI Work Buddy 是一款为个人和小团队打造的一站式工作管理平台，把任务、备忘、阅读笔记、即时想法整合到同一处，让每个人专注真正重要的事。
+AI-buddy 是一款为个人和小团队打造的一站式工作管理平台，把任务、备忘、阅读笔记、即时想法整合到同一处，让每个人专注真正重要的事。
 
 ## 核心特性
 
@@ -28,7 +28,7 @@ AI Work Buddy 是一款为个人和小团队打造的一站式工作管理平台
 | 数据库 | MySQL 5.7+ / 8.0 |
 | 进程管理 | PM2 |
 | 反向代理 | Nginx |
-| 部署 | 宝塔面板一键部署，支持 Git WebHook 自动发布 |
+| 部署 | 宝塔面板一键部署 |
 
 ## 在线演示
 
@@ -38,8 +38,8 @@ AI Work Buddy 是一款为个人和小团队打造的一站式工作管理平台
 
 ```bash
 # 1. 克隆代码
-git clone https://github.com/engrecho/ai-work-buddy.git
-cd ai-work-buddy
+git clone https://github.com/engrecho/AI-buddy.git
+cd AI-buddy
 
 # 2. 导入数据库
 mysql -u root -p'你的密码' buddy < deploy/mysql-schema.sql
@@ -72,12 +72,11 @@ yarn dev     # 启动前端（端口 8080）
 4. 构建前端静态文件
 5. 配置 Nginx 代理（前端静态托管 + `/api/` 反向代理到 Express）
 6. （可选）申请 Let's Encrypt 证书强制 HTTPS
-7. （可选）配置 GitHub WebHook 实现 `git push` 自动部署
 
 ## 项目结构
 
 ```
-AIWorkbuddy/
+AI-buddy/
 ├── src/                       # 前端代码（React）
 │   ├── components/            # 通用组件 + 业务组件
 │   ├── contexts/              # React Context（认证等）
@@ -94,8 +93,9 @@ AIWorkbuddy/
 ├── deploy/                    # 部署相关
 │   ├── mysql-schema.sql       # 数据库建表脚本
 │   ├── nginx-site.conf        # Nginx 配置模板
-│   ├── ai-work-buddy.service  # systemd 服务模板
-│   └── pull.sh                # WebHook 自动部署脚本
+│   ├── ai-buddy.service       # systemd 服务模板
+│   └── pull.sh                # 自动部署脚本
+├── docs/                      # 文档
 ├── ecosystem.config.cjs       # PM2 配置
 ├── .env.example               # 环境变量模板
 ├── DEPLOY.md                  # 宝塔部署指南
@@ -108,7 +108,6 @@ AIWorkbuddy/
 - [x] 任务看板（自定义分组、子任务、依赖）
 - [x] 备忘录与梳理文档
 - [x] 阅读收藏与随记
-- [x] 宝塔 WebHook 自动部署
 - [ ] 微信扫码登录
 - [ ] 多端数据同步（小程序）
 - [ ] 数据导入导出
@@ -128,9 +127,3 @@ AIWorkbuddy/
 ## 许可证
 
 [MIT License](LICENSE)
-
-## 致谢
-
-- 灵感来自 Notion、Trello、滴答清单
-- UI 组件基于 [shadcn/ui](https://ui.shadcn.com/)
-- 图标来自 [lucide-react](https://lucide.dev/)
