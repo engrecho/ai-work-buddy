@@ -1,6 +1,8 @@
 # 开发指南
 
-本文档面向希望修改或扩展 AI Work Buddy 功能的开发者。
+本文档面向希望修改或扩展 AI-Buddy 功能的开发者。
+
+AI-Buddy 是一个为碎片化内容而生的轻量工作空间：任务、备忘、阅读、随记四种容器共用同一套关联机制，可以被 AI 通过 `buddy-skill/` 目录直接操作。如果你打算给它加新功能或新内容形态，建议先理解**容器（container）+ 关联（relation）**这两层抽象——多数新功能都是新增一种容器或新增一种关联。
 
 ## 技术栈概览
 
@@ -28,8 +30,8 @@
 ### 2. 克隆并安装
 
 ```bash
-git clone https://github.com/engrecho/ai-work-buddy.git
-cd ai-work-buddy
+git clone https://github.com/engrecho/AI-buddy.git
+cd ai-buddy
 
 # 前端依赖
 yarn install
@@ -313,10 +315,10 @@ export const navItems = [
 
 ```bash
 # 查看 PM2 实时日志
-pm2 logs ai-work-buddy-api
+pm2 logs ai-buddy-api
 
 # 查看错误日志
-pm2 logs ai-work-buddy-api --err
+pm2 logs ai-buddy-api --err
 ```
 
 在 `server/index.js` 各路由中添加 `console.log`：

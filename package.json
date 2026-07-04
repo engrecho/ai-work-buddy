@@ -1,15 +1,15 @@
 {
-  "name": "ai-work-buddy",
+  "name": "ai-buddy",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/engrecho/ai-work-buddy.git"
+    "url": "https://github.com/engrecho/AI-buddy.git"
   },
-  "homepage": "https://github.com/engrecho/ai-work-buddy",
+  "homepage": "https://github.com/engrecho/AI-buddy",
   "bugs": {
-    "url": "https://github.com/engrecho/ai-work-buddy/issues"
+    "url": "https://github.com/engrecho/AI-buddy/issues"
   },
   "scripts": {
     "dev": "vite",

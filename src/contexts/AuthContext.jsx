@@ -2,8 +2,8 @@ import { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
-const TOKEN_KEY = 'ai_work_buddy_token';
-const USER_KEY = 'ai_work_buddy_user';
+const TOKEN_KEY = 'ai_buddy_token';
+const USER_KEY = 'ai_buddy_user';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

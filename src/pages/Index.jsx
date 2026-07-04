@@ -420,8 +420,8 @@ const Index = () => {
     <div className='flex flex-col h-screen bg-[#f5f5f5] overflow-hidden'>
       {/* ══ 移动端顶部标题栏 ══ */}
       <header className='md:hidden flex-shrink-0 bg-white h-11 flex items-center px-4 border-b border-gray-100'>
-        <img src='/logo.png' alt='Hi~Buddy' className='h-7 w-7 rounded-md object-cover mr-2' />
-        <span className='text-sm font-bold text-gray-800'>Hi~Buddy</span>
+        <img src='/logo.png' alt='AI-Buddy' className='h-7 w-7 rounded-md object-cover mr-2' />
+        <span className='text-sm font-bold text-gray-800'>AI-Buddy</span>
         <span className='ml-auto text-xs text-gray-400'>
           {new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
         </span>
@@ -445,8 +445,8 @@ const Index = () => {
       {/* ══ PC 端顶部标题栏 ══ */}
       <header className='hidden md:flex flex-shrink-0 bg-white h-14 items-center pl-5 pr-5 border-b border-gray-100'>
         <div className='flex items-center gap-2'>
-          <img src='/logo.png' alt='Hi~Buddy' className='h-9 w-9 rounded-md object-cover' />
-          <span className='text-base font-semibold text-gray-800 leading-none ml-1'>Hi~Buddy</span>
+          <img src='/logo.png' alt='AI-Buddy' className='h-9 w-9 rounded-md object-cover' />
+          <span className='text-base font-semibold text-gray-800 leading-none ml-1'>AI-Buddy</span>
           <span className='text-gray-200 select-none leading-none ml-2'>|</span>
           <span className='text-base font-medium text-gray-500 leading-none'>{configOpen ? pageTitles.config : pageTitles[activeTab]}</span>
         </div>

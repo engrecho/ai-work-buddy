@@ -1,8 +1,8 @@
 # 宝塔面板部署完整指南
 
-本文档面向**没有任何 Linux 基础**的用户，从一台全新的云服务器开始，一步步把 AI Work Buddy 部署上线。
+本文档面向**没有任何 Linux 基础**的用户，从一台全新的云服务器开始，一步步把 AI-Buddy 部署上线。
 
-预计耗时：30-60 分钟。
+AI-Buddy 是一个自托管友好的工作空间：单文件 MySQL + Express，单机就能跑起来。下面从零开始到上线大约 30-60 分钟。
 
 ## 准备工作
 
@@ -128,7 +128,7 @@ yarn config set registry https://registry.npmmirror.com
 
 ```bash
 cd /www/wwwroot
-git clone https://github.com/engrecho/ai-work-buddy.git your-domain.com
+git clone https://github.com/engrecho/AI-buddy.git your-domain.com
 cd your-domain.com
 ```
 
@@ -137,20 +137,20 @@ cd your-domain.com
 **注意**：如果服务器在国内且 git clone 很慢，使用 GitHub 代理：
 
 ```bash
-git clone https://gh-proxy.com/https://github.com/engrecho/ai-work-buddy.git your-domain.com
+git clone https://gh-proxy.com/https://github.com/engrecho/AI-buddy.git your-domain.com
 ```
 
 ### 5.2 方法 B：宝塔文件管理器上传
 
-1. 在本地下载项目 zip：<https://github.com/engrecho/ai-work-buddy/archive/refs/heads/main.zip>
+1. 在本地下载项目 zip：<https://github.com/engrecho/AI-buddy/archive/refs/heads/main.zip>
 2. 宝塔面板 → **文件** → 进入 `/www/wwwroot/`
 3. 上传 zip 文件
 4. 终端解压：
 
 ```bash
 cd /www/wwwroot
-unzip ai-work-buddy-main.zip
-mv ai-work-buddy-main your-domain.com
+unzip AI-buddy-main.zip
+mv AI-buddy-main your-domain.com
 cd your-domain.com
 ```
 
@@ -343,7 +343,7 @@ bash /www/wwwroot/your-domain.com/deploy/pull.sh
 
 ### GitHub 端配置
 
-打开 `https://github.com/engrecho/ai-work-buddy/settings/hooks/new`：
+打开 `https://github.com/engrecho/AI-buddy/settings/hooks/new`：
 
 - Payload URL: 宝塔 WebHook URL
 - Content type: `application/json`
@@ -370,7 +370,7 @@ git push origin main
 
 ```bash
 pm2 status
-pm2 logs ai-work-buddy-api
+pm2 logs ai-buddy-api
 ```
 
 ### 数据库连接失败

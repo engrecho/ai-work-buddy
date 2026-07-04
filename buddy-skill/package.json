@@ -1,0 +1,15 @@
+{
+  "name": "buddy-skill",
+  "version": "1.0.0",
+  "description": "SKILL for AI-Buddy - interact with your tasks, memos, and reading list via API",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": ["buddy", "ai-buddy", "skill", "claude", "ai", "tasks", "productivity"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { User, Camera, Lock, Save, LogOut } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { User, Camera, Lock, Save, LogOut, Key, Copy, Trash2, Plus, Eye, EyeOff, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -25,6 +26,82 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [apiKeys, setApiKeys] = useState([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [newlyCreated, setNewlyCreated] = useState(null);
+  const [showKey, setShowKey] = useState(false);
+  const [loadingKeys, setLoadingKeys] = useState(false);
+
+  // 当切换到 API Key tab 时加载
+  useEffect(() => {
+    if (open) loadApiKeys();
+  }, [open]);
+
+  const loadApiKeys = async () => {
+    setLoadingKeys(true);
+    try {
+      const res = await fetch('/api/auth/api-keys', {
+        credentials: 'include',
+      });
+      const json = await res.json();
+      if (!json.error) setApiKeys(json.data || []);
+    } catch (err) {
+      console.error('加载 API Key 失败', err);
+    } finally {
+      setLoadingKeys(false);
+    }
+  };
+
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) {
+      toast.error('请输入 Key 名称');
+      return;
+    }
+    setCreatingKey(true);
+    try {
+      const res = await fetch('/api/auth/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: newKeyName.trim() }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message);
+      setNewlyCreated(json.data);
+      setShowKey(true);
+      setNewKeyName('');
+      await loadApiKeys();
+      toast.success('已创建 API Key，请立即保存明文');
+    } catch (err) {
+      toast.error('创建失败：' + err.message);
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (id, name) => {
+    if (!confirm(`确定撤销「${name}」吗？使用此 Key 的工具将立即失效。`)) return;
+    try {
+      const res = await fetch(`/api/auth/api-keys/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message);
+      toast.success('已撤销');
+      await loadApiKeys();
+    } catch (err) {
+      toast.error('撤销失败：' + err.message);
+    }
+  };
+
+  const copyKey = (text) => {
+    navigator.clipboard.writeText(text).then(
+      () => toast.success('已复制'),
+      () => toast.error('复制失败')
+    );
+  };
 
   const handleSaveProfile = async () => {
     setSavingProfile(true);
@@ -41,7 +118,7 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
       } else {
         // 更新本地用户信息
         const updatedUser = { ...user, ...result.data };
-        login(localStorage.getItem('ai_work_buddy_token'), updatedUser);
+        login(localStorage.getItem('ai_buddy_token'), updatedUser);
         toast.success('资料更新成功');
       }
     } catch (err) {
@@ -105,9 +182,10 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
         </DialogHeader>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="profile">基本资料</TabsTrigger>
             <TabsTrigger value="password">修改密码</TabsTrigger>
+            <TabsTrigger value="api-key">API Key</TabsTrigger>
           </TabsList>
 
           {/* 基本资料 */}
@@ -211,6 +289,88 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
               <Lock className="w-4 h-4 mr-2" />
               {savingPassword ? '修改中...' : '修改密码'}
             </Button>
+          </TabsContent>
+
+          {/* API Key 管理 */}
+          <TabsContent value="api-key" className="space-y-4 pt-4">
+            {/* 新创建的 Key（一次性显示） */}
+            {newlyCreated && (
+              <div className="p-3 border border-amber-300 bg-amber-50 rounded-lg space-y-2">
+                <div className="flex items-center gap-2 text-amber-900 text-sm font-medium">
+                  <AlertTriangle className="h-4 w-4" />
+                  请立即保存 API Key
+                </div>
+                <div className="text-xs text-amber-800">
+                  关闭后无法再次查看明文，如丢失请撤销后重新创建。
+                </div>
+                <div className="flex items-center gap-1">
+                  <code className="flex-1 px-2 py-1.5 bg-white border border-amber-300 rounded text-xs font-mono break-all">
+                    {showKey ? newlyCreated.api_key : '•'.repeat(40)}
+                  </code>
+                  <Button size="sm" variant="ghost" onClick={() => setShowKey(!showKey)}>
+                    {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => copyKey(newlyCreated.api_key)}>
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => { setNewlyCreated(null); setShowKey(false); }} className="w-full">
+                  我已保存，关闭
+                </Button>
+              </div>
+            )}
+
+            {/* 创建 */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Key 名称（如：Claude SKILL）"
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreateKey()}
+              />
+              <Button onClick={handleCreateKey} disabled={creatingKey} size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                {creatingKey ? '创建中...' : '创建'}
+              </Button>
+            </div>
+
+            {/* 列表 */}
+            {loadingKeys ? (
+              <div className="text-xs text-gray-500 py-3 text-center">加载中...</div>
+            ) : apiKeys.length === 0 ? (
+              <div className="text-xs text-gray-500 py-3 text-center">还没有 API Key</div>
+            ) : (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                {apiKeys.map((k) => (
+                  <div key={k.id} className="flex items-center gap-2 px-2 py-1.5 border rounded text-sm">
+                    <Key className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-gray-900 truncate">{k.name}</span>
+                        {!k.is_active && <Badge variant="destructive" className="text-[10px] py-0">已撤销</Badge>}
+                        {k.is_active && k.last_used_at && (
+                          <Badge variant="outline" className="text-[10px] py-0 text-green-600 border-green-300">
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />活跃
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-gray-500 font-mono truncate">
+                        {k.key_prefix}...
+                      </div>
+                    </div>
+                    {k.is_active && (
+                      <Button size="sm" variant="ghost" onClick={() => handleRevokeKey(k.id, k.name)} className="h-6 w-6 p-0 text-red-500 hover:bg-red-50">
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="text-[11px] text-gray-500 leading-relaxed p-2 bg-blue-50 border border-blue-200 rounded">
+              <strong className="text-blue-900">用法：</strong>创建后保存到工具配置文件（如 <code className="bg-white px-1 rounded">~/.buddy-skill/config.json</code>），请求时在 Header 携带 <code className="bg-white px-1 rounded">X-API-Key: 你的Key</code>。
+            </div>
           </TabsContent>
         </Tabs>
 

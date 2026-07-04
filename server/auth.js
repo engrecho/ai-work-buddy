@@ -1,9 +1,10 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { pool } from './db.js';
 
 // ── 配置 ─────────────────────────────────────────────────────
-const JWT_SECRET = process.env.JWT_SECRET || 'ai-work-buddy-default-secret-please-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'ai-buddy-default-secret-please-change-in-production';
 const JWT_EXPIRES_IN = '30d'; // 30 天有效期
 const COOKIE_NAME = 'auth_token';
 const BCRYPT_ROUNDS = 10;
@@ -263,6 +264,110 @@ export async function updateUserProfile(userId, { nickname, avatar_url }) {
   );
 
   return getCurrentUser(userId);
+}
+
+// ══════════════════════════════════════════════════════════════
+// API Key 管理（供外部工具/SKILL 使用）
+// ══════════════════════════════════════════════════════════════
+
+// 生成新的 API Key（明文形式返回给用户一次）
+export function generateApiKey() {
+  // 64 字符的随机字符串：32 字节十六进制
+  return 'buddy_' + crypto.randomBytes(32).toString('hex');
+}
+
+// 哈希 API Key 用于存储
+export async function hashApiKey(plainKey) {
+  // 用 SHA256 而非 bcrypt，因为 API Key 已经是高熵随机串
+  // 性能更好，且能精确匹配查找（bcrypt 每次哈希结果不同）
+  return crypto.createHash('sha256').update(plainKey).digest('hex');
+}
+
+// 为用户创建 API Key（返回明文 + 元数据）
+export async function createApiKeyForUser(userId, { name = 'Default', expiresInDays } = {}) {
+  const plainKey = generateApiKey();
+  const keyHash = await hashApiKey(plainKey);
+  const keyPrefix = plainKey.slice(0, 12); // 用于显示和识别
+  const expiresAt = expiresInDays
+    ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+    : null;
+
+  await pool.query(
+    `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, expires_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [userId, keyHash, keyPrefix, name, expiresAt]
+  );
+
+  return {
+    api_key: plainKey,         // 仅显示一次
+    key_prefix: keyPrefix,
+    name,
+    expires_at: expiresAt,
+  };
+}
+
+// 用 API Key 查找用户（验证用）
+export async function getUserByApiKey(plainKey) {
+  if (!plainKey || !plainKey.startsWith('buddy_')) return null;
+  const keyHash = await hashApiKey(plainKey);
+
+  // 查找匹配的 key
+  const [rows] = await pool.query(
+    `SELECT id, user_id, name, expires_at, last_used_at
+     FROM api_keys
+     WHERE key_hash = ? AND is_active = TRUE
+     LIMIT 1`,
+    [keyHash]
+  );
+
+  if (rows.length === 0) return null;
+  const key = rows[0];
+
+  // 检查是否过期
+  if (key.expires_at && new Date(key.expires_at) < new Date()) {
+    return null;
+  }
+
+  // 更新最后使用时间
+  await pool.query(
+    'UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [key.id]
+  );
+
+  // 获取用户信息
+  const [users] = await pool.query(
+    'SELECT id, username, nickname FROM users WHERE id = ? LIMIT 1',
+    [key.user_id]
+  );
+  if (users.length === 0) return null;
+
+  return {
+    user: users[0],
+    api_key_id: key.id,
+    api_key_name: key.name,
+  };
+}
+
+// 列出用户的所有 API Key（不包含明文）
+export async function listApiKeysForUser(userId) {
+  const [rows] = await pool.query(
+    `SELECT id, name, key_prefix, last_used_at, expires_at, is_active, created_at
+     FROM api_keys
+     WHERE user_id = ?
+     ORDER BY created_at DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+// 撤销 API Key
+export async function revokeApiKey(userId, keyId) {
+  const [result] = await pool.query(
+    `UPDATE api_keys SET is_active = FALSE
+     WHERE id = ? AND user_id = ?`,
+    [keyId, userId]
+  );
+  return result.affectedRows > 0;
 }
 
 // 修改密码

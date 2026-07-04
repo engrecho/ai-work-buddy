@@ -1,5 +1,5 @@
 -- ============================================================
--- AI Work Buddy - MySQL 数据库 Schema
+-- AI-Buddy - MySQL 数据库 Schema
 -- 在宝塔数据库管理界面导入，或终端执行:
 -- mysql -u buddy -p'buddy' buddy < deploy/mysql-schema.sql
 -- ============================================================
@@ -20,6 +20,24 @@ CREATE TABLE `users` (
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `last_login_at` TIMESTAMP NULL,
     UNIQUE KEY `uk_users_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 0.1 api_keys（用户 API Key 表，供外部工具/SKILL 使用）
+-- ============================================================
+DROP TABLE IF EXISTS `api_keys`;
+CREATE TABLE `api_keys` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT NOT NULL,
+    `key_hash` VARCHAR(64) NOT NULL UNIQUE COMMENT 'SHA256(api_key) hex',
+    `key_prefix` VARCHAR(20) NOT NULL COMMENT '前 12 字符，用于显示',
+    `name` VARCHAR(100) DEFAULT 'Default',
+    `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
+    `last_used_at` TIMESTAMP NULL,
+    `expires_at` TIMESTAMP NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_api_keys_user_id` (`user_id`),
+    INDEX `idx_api_keys_key_hash` (`key_hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================

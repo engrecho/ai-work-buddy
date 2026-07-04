@@ -59,9 +59,9 @@ export default function LoginPage() {
           <div className="mx-auto w-16 h-16 rounded-full overflow-hidden">
             <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
           </div>
-          <CardTitle className="text-2xl">AI Work Buddy</CardTitle>
+          <CardTitle className="text-2xl">AI-Buddy</CardTitle>
           <CardDescription>
-            {mode === 'login' ? '登录以继续使用' : '创建一个新账号'}
+            {mode === 'login' ? '任务、笔记、阅读、随记——一处收纳，互相关联' : '创建一个新账号'}
           </CardDescription>
         </CardHeader>
         <CardContent>

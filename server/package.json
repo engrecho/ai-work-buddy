@@ -1,7 +1,7 @@
 {
-  "name": "ai-work-buddy-server",
+  "name": "ai-buddy-server",
   "version": "1.0.0",
-  "description": "Express + MySQL backend for AI Work Buddy",
+  "description": "Express + MySQL backend for AI-Buddy",
   "type": "module",
   "scripts": {
     "start": "node index.js",

@@ -1,5 +1,5 @@
 -- ============================================================
--- AI Work Buddy - 增量迁移：为缺失 user_id 字段的表添加
+-- AI-Buddy - 增量迁移：为缺失 user_id 字段的表添加
 -- 适用于已部署但 schema 漏掉 user_id 的实例
 -- 在宝塔终端执行：mysql -u buddy -p'NX62WP4bDJikBNih' buddy < deploy/migrate-add-user-id.sql
 -- ============================================================

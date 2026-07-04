@@ -1,4 +1,4 @@
-# WorkBuddy 数据库结构说明
+# AI-Buddy 数据库结构说明
 
 > 最后更新：2026-06-30
 > 数据库地址：`https://dbc23lmh865kibbhuu.database.nocode.cn`

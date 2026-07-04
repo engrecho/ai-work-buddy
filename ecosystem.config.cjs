@@ -1,6 +1,6 @@
 module.exports = {
   apps: [{
-    name: 'ai-work-buddy-api',
+    name: 'ai-buddy-api',
     script: 'server/index.js',
     cwd: '/www/wwwroot/buddy.bajiaolu.cn',
     env: {
@@ -12,7 +12,7 @@ module.exports = {
       DB_NAME: 'buddy',
       PORT: '3000',
       // 必填：JWT 签名密钥，部署后请改成你自己的随机字符串
-      JWT_SECRET: 'ai-work-buddy-production-please-change-this-secret',
+      JWT_SECRET: 'ai-buddy-production-please-change-this-secret',
     },
     instances: 1,
     autorestart: true,

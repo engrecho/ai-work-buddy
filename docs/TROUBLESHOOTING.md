@@ -7,11 +7,11 @@
 ```bash
 # ── PM2 ──
 pm2 status                          # 查看所有进程
-pm2 logs ai-work-buddy-api          # 实时日志
-pm2 logs ai-work-buddy-api --err    # 仅错误日志
-pm2 restart ai-work-buddy-api       # 重启
-pm2 stop ai-work-buddy-api          # 停止
-pm2 delete ai-work-buddy-api        # 删除（下次启动需重新 pm2 start）
+pm2 logs ai-buddy-api               # 实时日志
+pm2 logs ai-buddy-api --err         # 仅错误日志
+pm2 restart ai-buddy-api            # 重启
+pm2 stop ai-buddy-api               # 停止
+pm2 delete ai-buddy-api             # 删除（下次启动需重新 pm2 start）
 pm2 monit                           # 实时监控
 
 # ── Nginx ──
@@ -43,7 +43,7 @@ ss -tlnp                            # 监听端口
 
 ```bash
 pm2 status
-pm2 logs ai-work-buddy-api --lines 50
+pm2 logs ai-buddy-api --lines 50
 ```
 
 **修复**：
@@ -61,7 +61,7 @@ pm2 save
 **排查日志**：
 
 ```bash
-pm2 logs ai-work-buddy-api --err
+pm2 logs ai-buddy-api --err
 ```
 
 常见错误：
@@ -165,7 +165,7 @@ yarn install
 **修复**：使用 GitHub 代理：
 
 ```bash
-git clone https://gh-proxy.com/https://github.com/engrecho/ai-work-buddy.git 你的域名
+git clone https://gh-proxy.com/https://github.com/engrecho/AI-buddy.git 你的域名
 ```
 
 ### 10. 服务器内存不足，PM2 频繁重启
@@ -246,7 +246,7 @@ git pull
 yarn install
 yarn build
 cd server && yarn install && cd ..
-pm2 restart ai-work-buddy-api
+pm2 restart ai-buddy-api
 ```
 
 如果数据库结构有变化（如新增表或字段）：
@@ -304,4 +304,4 @@ grep ' 5[0-9][0-9] ' /www/wwwlogs/你的域名.log | tail
 1. 查看 PM2 日志
 2. 查看 Nginx 错误日志
 3. 查看 MySQL 错误日志
-4. 提交 GitHub Issue：<https://github.com/engrecho/ai-work-buddy/issues>
+4. 提交 GitHub Issue：<https://github.com/engrecho/AI-buddy/issues>

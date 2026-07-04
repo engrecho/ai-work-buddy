@@ -27,7 +27,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 // 从 localStorage 读取 token（用于在 fetch 请求头中携带）
 function getAuthToken() {
   try {
-    return localStorage.getItem('ai_work_buddy_token');
+    return localStorage.getItem('ai_buddy_token');
   } catch {
     return null;
   }

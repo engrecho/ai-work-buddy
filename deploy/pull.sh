@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# AI Work Buddy - 宝塔 WebHook 自动部署脚本
+# AI-Buddy - 宝塔 WebHook 自动部署脚本
 # 
 # 使用方式:
 #   1. 在宝塔 WebHook 插件中创建 hook
@@ -53,7 +53,7 @@ cd "$PROJECT_DIR"
 
 # 5. 重启后端服务
 log "[5/5] 重启 PM2 后端服务..."
-pm2 restart ai-work-buddy-api 2>/dev/null || pm2 start ecosystem.config.cjs
+pm2 restart ai-buddy-api 2>/dev/null || pm2 start ecosystem.config.cjs
 pm2 save
 
 log "========== 部署完成 ($CURRENT_COMMIT) =========="

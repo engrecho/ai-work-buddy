@@ -10,7 +10,8 @@ import {
 import {
   authMiddleware, optionalAuthMiddleware, generateToken,
   setAuthCookie, clearAuthCookie, registerUser, loginUser, getCurrentUser,
-  updateUserProfile, changePassword
+  updateUserProfile, changePassword,
+  createApiKeyForUser, listApiKeysForUser, revokeApiKey, getUserByApiKey
 } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,6 +47,44 @@ app.post('/api/auth/register', async (req, res) => {
       data: { user, token },
       error: null,
     });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// API Key 管理（用户在网页上创建，供外部工具使用）
+// ══════════════════════════════════════════════════════════════
+
+// 创建新的 API Key
+app.post('/api/auth/api-keys', authMiddleware, async (req, res) => {
+  try {
+    const { name, expires_in_days } = req.body;
+    const result = await createApiKeyForUser(req.user.id, {
+      name: name || 'Default',
+      expiresInDays: expires_in_days,
+    });
+    return res.json({ data: result, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 列出当前用户的所有 API Key
+app.get('/api/auth/api-keys', authMiddleware, async (req, res) => {
+  try {
+    const keys = await listApiKeysForUser(req.user.id);
+    return res.json({ data: keys, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 撤销 API Key
+app.delete('/api/auth/api-keys/:id', authMiddleware, async (req, res) => {
+  try {
+    const success = await revokeApiKey(req.user.id, parseInt(req.params.id, 10));
+    return res.json({ data: { success }, error: null });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }
@@ -502,7 +541,311 @@ app.delete('/api/:table', requireAuthForBusinessTable, async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// SKILL API v1（供 buddy-skill 工具使用，使用 API Key 认证）
+// ══════════════════════════════════════════════════════════════
+
+const API_KEY_TABLES = new Set(['tasks', 'task_groups', 'memos', 'task_notes', 'reading_items', 'quick_notes']);
+
+// API Key 认证中间件
+async function apiKeyAuth(req, res, next) {
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) {
+    return res.status(401).json({
+      data: null,
+      error: { message: '缺少 X-API-Key 请求头' },
+    });
+  }
+  const result = await getUserByApiKey(apiKey);
+  if (!result) {
+    return res.status(401).json({
+      data: null,
+      error: { message: 'API Key 无效或已过期' },
+    });
+  }
+  req.user = result.user;
+  req.apiKeyId = result.api_key_id;
+  next();
+}
+
+// 列出任务
+app.get('/api/v1/tasks', apiKeyAuth, async (req, res) => {
+  const filters = parseApiFilters(req.query, 'tasks');
+  const userId = req.user.id;
+  const { sql, params } = buildSelectSql('tasks', userId, filters, {
+    order: req.query.order,
+    limit: req.query.limit,
+  });
+  const [rows] = await pool.query(sql, params);
+  res.json({ data: rows.map(r => transformRow('tasks', r)), error: null });
+});
+
+// 创建任务
+app.post('/api/v1/tasks', apiKeyAuth, async (req, res) => {
+  try {
+    const row = { ...req.body, user_id: req.user.id };
+    const { sql, params } = buildInsertSql('tasks', [row]);
+    const [result] = await pool.query(sql, params);
+    res.json({ data: { ...row, id: result.insertId || row.id }, error: null });
+  } catch (err) {
+    res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 更新任务
+app.patch('/api/v1/tasks/:id', apiKeyAuth, async (req, res) => {
+  try {
+    const { sql, params } = buildUpdateSql('tasks', req.user.id, parseInt(req.params.id, 10), req.body);
+    if (!sql) {
+      return res.json({ data: null, error: { message: '没有可更新的字段' } });
+    }
+    await pool.query(sql, params);
+    res.json({ data: { success: true }, error: null });
+  } catch (err) {
+    res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 删除任务（必须 confirm=true）
+app.delete('/api/v1/tasks/:id', apiKeyAuth, async (req, res) => {
+  if (req.query.confirm !== 'true') {
+    return res.json({
+      data: null,
+      error: {
+        message: '删除任务需要 confirm=true。SKILL 必须先向用户列出计划并取得确认。',
+        code: 'CONFIRMATION_REQUIRED',
+      },
+    });
+  }
+  try {
+    await pool.query(
+      'DELETE FROM tasks WHERE id = ? AND user_id = ?',
+      [parseInt(req.params.id, 10), req.user.id]
+    );
+    res.json({ data: { success: true }, error: null });
+  } catch (err) {
+    res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 批量整理任务（dry_run=true 时只列计划不执行）
+app.post('/api/v1/tasks/organize', apiKeyAuth, async (req, res) => {
+  try {
+    const { plan, dry_run = true } = req.body;
+
+    if (!plan || !Array.isArray(plan) || plan.length === 0) {
+      return res.json({ data: null, error: { message: 'plan 必须是包含操作的数组' } });
+    }
+
+    // 校验 plan 格式
+    for (const op of plan) {
+      if (!op.action || !['update', 'delete', 'create'].includes(op.action)) {
+        return res.json({
+          data: null,
+          error: { message: `不支持的操作：${op.action}（仅支持 create/update/delete）` },
+        });
+      }
+    }
+
+    if (dry_run) {
+      // dry_run 模式只返回计划预览，不实际执行
+      return res.json({
+        data: {
+          dry_run: true,
+          plan,
+          affected_tasks: plan.filter(o => o.id).map(o => o.id),
+          summary: plan.map(op => describePlanOp(op)),
+        },
+        error: null,
+      });
+    }
+
+    // 实际执行：用事务确保原子性
+    const conn = await pool.getConnection();
+    await conn.beginTransaction();
+    try {
+      const results = [];
+      for (const op of plan) {
+        if (op.action === 'update') {
+          const { sql, params } = buildUpdateSql('tasks', req.user.id, op.id, op.changes || {});
+          if (sql) {
+            const [r] = await conn.query(sql, params);
+            results.push({ id: op.id, action: 'update', affected: r.affectedRows });
+          }
+        } else if (op.action === 'delete') {
+          const [r] = await conn.query(
+            'DELETE FROM tasks WHERE id = ? AND user_id = ?',
+            [op.id, req.user.id]
+          );
+          results.push({ id: op.id, action: 'delete', affected: r.affectedRows });
+        } else if (op.action === 'create') {
+          const row = { ...op.data, user_id: req.user.id };
+          const { sql, params } = buildInsertSql('tasks', [row]);
+          const [r] = await conn.query(sql, params);
+          results.push({ id: r.insertId || row.id, action: 'create' });
+        }
+      }
+      await conn.commit();
+      res.json({ data: { dry_run: false, results }, error: null });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+    res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 通用列表接口（备忘/阅读/随记）
+for (const table of ['memos', 'reading_items', 'quick_notes']) {
+  app.get(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
+    const filters = parseApiFilters(req.query, table);
+    const { sql, params } = buildSelectSql(table, req.user.id, filters, {
+      order: req.query.order,
+      limit: req.query.limit,
+    });
+    const [rows] = await pool.query(sql, params);
+    res.json({ data: rows.map(r => transformRow(table, r)), error: null });
+  });
+
+  app.post(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
+    try {
+      const row = { ...req.body, user_id: req.user.id };
+      const { sql, params } = buildInsertSql(table, [row]);
+      const [result] = await pool.query(sql, params);
+      res.json({ data: { ...row, id: result.insertId || row.id }, error: null });
+    } catch (err) {
+      res.json({ data: null, error: { message: err.message } });
+    }
+  });
+}
+
+// 获取任务分组
+app.get('/api/v1/task-groups', apiKeyAuth, async (req, res) => {
+  const { sql, params } = buildSelectSql('task_groups', req.user.id, [], { order: 'sort_order:asc' });
+  const [rows] = await pool.query(sql, params);
+  res.json({ data: rows.map(r => transformRow('task_groups', r)), error: null });
+});
+
+// 获取当前用户信息（验证 API Key 用）
+app.get('/api/v1/me', apiKeyAuth, async (req, res) => {
+  res.json({ data: req.user, error: null });
+});
+
+// ── 工具函数：SKILL API 用的 SQL 构建 ─────────────────────
+
+function parseApiFilters(query, table) {
+  const filters = [];
+  for (const key of Object.keys(query)) {
+    if (key.startsWith('filter_')) {
+      const col = key.slice(7);
+      if (!validateColumn(table, col)) continue;
+      const value = query[key];
+      // 数组形式（多个值）= in 查询
+      if (Array.isArray(value)) {
+        filters.push({ type: 'in', column: col, value });
+      } else {
+        filters.push({ type: 'eq', column: col, value });
+      }
+    } else if (key === 'q' && typeof query[key] === 'string') {
+      // 简单模糊查询（title 包含关键字）
+      filters.push({ type: 'like', column: 'title', value: `%${query[key]}%` });
+    } else if (key === 'status' || key === 'priority' || key === 'is_project' || key === 'is_read' || key === 'is_starred') {
+      // 常用字段直接作为过滤
+      const value = query[key];
+      if (Array.isArray(value)) {
+        filters.push({ type: 'in', column: key, value });
+      } else {
+        filters.push({ type: 'eq', column: key, value: value === 'true' ? true : value === 'false' ? false : value });
+      }
+    }
+  }
+  return filters;
+}
+
+function buildSelectSql(table, userId, filters, { order, limit } = {}) {
+  const conditions = ['`user_id` = ?'];
+  const params = [userId];
+
+  for (const f of filters) {
+    if (!validateColumn(table, f.column)) continue;
+    if (f.column === 'user_id') continue;
+    const col = escapeId(f.column);
+    if (f.type === 'eq') {
+      conditions.push(`${col} = ?`);
+      params.push(prepareValue(table, f.column, f.value));
+    } else if (f.type === 'in' && Array.isArray(f.value) && f.value.length) {
+      const placeholders = f.value.map(() => '?').join(', ');
+      conditions.push(`${col} IN (${placeholders})`);
+      params.push(...f.value);
+    } else if (f.type === 'like') {
+      conditions.push(`${col} LIKE ?`);
+      params.push(f.value);
+    }
+  }
+
+  let orderClause = '';
+  if (order) {
+    const orderClauses = parseOrder([order], table);
+    if (orderClauses.length > 0) orderClause = `ORDER BY ${orderClauses.join(', ')}`;
+  }
+  const limitClause = limit ? `LIMIT ${parseInt(limit, 10)}` : '';
+
+  const sql = `SELECT * FROM ${escapeId(table)} WHERE ${conditions.join(' AND ')} ${orderClause} ${limitClause}`;
+  return { sql, params };
+}
+
+function buildInsertSql(table, rows) {
+  const validCols = TABLE_COLUMNS[table];
+  const allKeys = new Set();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (validCols.includes(key)) allKeys.add(key);
+    }
+  }
+  const columns = [...allKeys];
+  const valueRows = rows.map(row => columns.map(col => prepareValue(table, col, row[col])));
+  const placeholders = valueRows.map(() => `(${columns.map(() => '?').join(', ')})`).join(', ');
+  const sql = `INSERT INTO ${escapeId(table)} (${columns.map(c => escapeId(c)).join(', ')}) VALUES ${placeholders}`;
+  return { sql, params: valueRows.flat() };
+}
+
+function buildUpdateSql(table, userId, id, patch) {
+  const validCols = TABLE_COLUMNS[table];
+  const setColumns = [];
+  const setParams = [];
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === 'user_id' || key === 'id') continue;
+    if (validCols.includes(key)) {
+      setColumns.push(`${escapeId(key)} = ?`);
+      setParams.push(prepareValue(table, key, value));
+    }
+  }
+  if (['tasks', 'task_groups', 'memos', 'task_notes'].includes(table) && !patch.updated_at) {
+    setColumns.push('`updated_at` = CURRENT_TIMESTAMP');
+  }
+  if (setColumns.length === 0) return { sql: null, params: [] };
+  const sql = `UPDATE ${escapeId(table)} SET ${setColumns.join(', ')} WHERE id = ? AND user_id = ?`;
+  return { sql, params: [...setParams, id, userId] };
+}
+
+function describePlanOp(op) {
+  if (op.action === 'update') {
+    const changes = Object.entries(op.changes || {}).map(([k, v]) => `${k}=${v}`).join(', ');
+    return `更新任务 ${op.id}: ${changes}`;
+  }
+  if (op.action === 'delete') {
+    return `删除任务 ${op.id}`;
+  }
+  if (op.action === 'create') {
+    return `创建任务: ${op.data?.title || '(无标题)'}`;
+  }
+  return JSON.stringify(op);
+}
+
 // ── 启动服务器 ──────────────────────────────────────────────
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`AI Work Buddy API server running on http://127.0.0.1:${PORT}`);
+  console.log(`AI-Buddy API server running on http://127.0.0.1:${PORT}`);
 });

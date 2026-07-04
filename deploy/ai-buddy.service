@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Work Buddy API Server (Express)
+Description=AI-Buddy API Server (Express)
 After=network.target mysql.service
 
 [Service]
