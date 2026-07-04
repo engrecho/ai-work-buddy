@@ -18,6 +18,7 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js init                      交互式初始化配置
   node index.js test                      测试连接
   node index.js whoami                    查看当前用户
+  node index.js list-task-groups          列出任务分组
   node index.js list-tasks [options]      列出任务
   node index.js get-task <id>             查看任务详情
   node index.js add-task --title "..."    创建任务
@@ -94,6 +95,21 @@ async function cmdWhoami() {
   console.log(`当前用户：${me.nickname || me.username}`);
   console.log(`用户名：${me.username}`);
   console.log(`ID：${me.id}`);
+}
+
+async function cmdListTaskGroups(flags) {
+  const client = requireClient();
+  const groups = await client.listTaskGroups();
+  if (groups.length === 0) {
+    console.log('没有任务分组');
+    return;
+  }
+  console.log(`共 ${groups.length} 个分组：\n`);
+  for (const g of groups) {
+    const color = g.color ? ` ${g.color}` : '';
+    const kw = g.keywords?.length ? ` (keywords: ${g.keywords.join(', ')})` : '';
+    console.log(`  [${g.id}] ${g.name} sort=${g.sort_order ?? '-'}${color}${kw}`);
+  }
 }
 
 async function cmdListTasks(flags) {
@@ -322,6 +338,7 @@ async function main() {
       case 'init': return cmdInit();
       case 'test': return cmdTest();
       case 'whoami': return cmdWhoami();
+      case 'list-task-groups': return cmdListTaskGroups(flags);
       case 'list-tasks': return cmdListTasks(flags);
       case 'get-task': return cmdGetTask(flags._positional?.[0]);
       case 'add-task': return cmdAddTask(flags);

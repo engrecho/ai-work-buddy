@@ -143,10 +143,13 @@ node index.js organize-tasks archive-completed
 | `/task-groups` | GET | 任务分组列表 |
 | `/memos` | GET | 备忘列表（支持 `q`、`memo_type`） |
 | `/memos` | POST | 创建备忘 |
+| `/memos/:id` | GET | 备忘详情 |
 | `/reading` | GET | 阅读收藏列表（支持 `q`、`is_read`、`is_starred`） |
 | `/reading` | POST | 添加阅读收藏 |
+| `/reading/:id` | GET | 阅读详情 |
 | `/quick-notes` | GET | 随记列表 |
 | `/quick-notes` | POST | 创建随记 |
+| `/quick-notes/:id` | GET | 随记详情 |
 
 ### 任务查询参数
 
@@ -210,6 +213,7 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js init                      交互式初始化配置
   node index.js test                      测试连接
   node index.js whoami                    查看当前用户
+  node index.js list-task-groups          列出任务分组
   node index.js list-tasks [options]      列出任务
   node index.js get-task <id>             查看任务详情
   node index.js add-task --title "..."    创建任务

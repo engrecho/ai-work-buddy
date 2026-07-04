@@ -580,13 +580,34 @@ app.get('/api/v1/tasks', apiKeyAuth, async (req, res) => {
   res.json({ data: rows.map(r => transformRow('tasks', r)), error: null });
 });
 
+// 获取单条任务
+app.get('/api/v1/tasks/:id', apiKeyAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 必须是数字' } });
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM tasks WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    const row = rows[0];
+    if (!row) {
+      return res.json({ data: null, error: { message: '任务不存在或无权限' } });
+    }
+    res.json({ data: transformRow('tasks', row), error: null });
+  } catch (err) {
+    res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // 创建任务
 app.post('/api/v1/tasks', apiKeyAuth, async (req, res) => {
   try {
     const row = { ...req.body, user_id: req.user.id };
     const { sql, params } = buildInsertSql('tasks', [row]);
     const [result] = await pool.query(sql, params);
-    res.json({ data: { ...row, id: result.insertId || row.id }, error: null });
+    res.status(201).json({ data: { ...row, id: result.insertId || row.id }, error: null });
   } catch (err) {
     res.json({ data: null, error: { message: err.message } });
   }
@@ -710,12 +731,32 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
     res.json({ data: rows.map(r => transformRow(table, r)), error: null });
   });
 
+  app.get(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}/:id`, apiKeyAuth, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.json({ data: null, error: { message: 'id 必须是数字' } });
+    }
+    try {
+      const [rows] = await pool.query(
+        `SELECT * FROM ${escapeId(table)} WHERE id = ? AND user_id = ?`,
+        [id, req.user.id]
+      );
+      const row = rows[0];
+      if (!row) {
+        return res.json({ data: null, error: { message: '记录不存在或无权限' } });
+      }
+      res.json({ data: transformRow(table, row), error: null });
+    } catch (err) {
+      res.json({ data: null, error: { message: err.message } });
+    }
+  });
+
   app.post(`/api/v1/${table === 'reading_items' ? 'reading' : table === 'memos' ? 'memos' : 'quick-notes'}`, apiKeyAuth, async (req, res) => {
     try {
       const row = { ...req.body, user_id: req.user.id };
       const { sql, params } = buildInsertSql(table, [row]);
       const [result] = await pool.query(sql, params);
-      res.json({ data: { ...row, id: result.insertId || row.id }, error: null });
+      res.status(201).json({ data: { ...row, id: result.insertId || row.id }, error: null });
     } catch (err) {
       res.json({ data: null, error: { message: err.message } });
     }
