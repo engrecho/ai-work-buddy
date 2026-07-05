@@ -88,3 +88,11 @@ done
 shopt -u nullglob
 
 log "========== 部署完成 ($CURRENT_COMMIT) =========="
+
+# 7. 同步 Skills 到 /root/.openclaw/workspace/skills/
+log "[7/7] 同步 Skills 到 openclaw..."
+bash "$PROJECT_DIR/deploy/sync-skills.sh" >> "$LOG_FILE" 2>&1 || {
+  log "  ✗ sync-skills.sh 失败（已记录到 $LOG_FILE）"
+}
+
+log "========== 全部完成 =========="
