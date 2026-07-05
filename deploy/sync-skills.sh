@@ -23,7 +23,7 @@ set +e  # 失败不立刻退出，便于日志记录
 LOG_FILE="/www/wwwlogs/buddy-deploy.log"
 SKILLS_DIR="/root/.openclaw/workspace/skills"
 PROJECT_DIR="/www/wwwroot/buddy.bajiaolu.cn"
-GIT_MIRROR_DIR="/www/wwwroot/_git"
+GIT_MIRROR_DIR="/var/cache/git-mirrors"
 
 EXTRACT_REPO="https://github.com/engrecho/ExtractVideoSkill.git"
 EXTRACT_BRANCH="main"
@@ -54,8 +54,11 @@ if [ ! -d "$MIRROR" ]; then
     >> "$LOG_FILE" 2>&1
 else
   log "  → fetch + reset"
+  # bare repo 不一定有 origin/xxx remote ref，用 FETCH_HEAD 兜底
   git --git-dir="$MIRROR" fetch --depth 1 origin "$EXTRACT_BRANCH" >> "$LOG_FILE" 2>&1
-  git --git-dir="$MIRROR" reset --hard "origin/$EXTRACT_BRANCH" >> "$LOG_FILE" 2>&1
+  git --git-dir="$MIRROR" update-ref "refs/heads/$EXTRACT_BRANCH" "FETCH_HEAD" >> "$LOG_FILE" 2>&1
+  git --git-dir="$MIRROR" --work-tree=/tmp/empty_"$$" \
+    --git-dir="$MIRROR" symbolic-ref HEAD "refs/heads/$EXTRACT_BRANCH" 2>/dev/null || true
 fi
 
 # 1.2 rsync 到目标（--delete 保证旧文件被清掉）
@@ -63,7 +66,7 @@ DEST="$SKILLS_DIR/$EXTRACT_DIR_NAME"
 mkdir -p "$DEST"
 # 把 bare mirror 的工作树导出到临时目录，再 rsync
 TMP_WT=$(mktemp -d)
-git --git-dir="$MIRROR" --work-tree="$TMP_WT" checkout -f >> "$LOG_FILE" 2>&1
+git --git-dir="$MIRROR" archive "HEAD" | tar -x -C "$TMP_WT" >> "$LOG_FILE" 2>&1
 # 过滤掉 macOS 噪音 + .git
 rsync -a --delete \
   --exclude='.git' --exclude='.git/' --exclude='._*' --exclude='.DS_Store' \
@@ -71,6 +74,9 @@ rsync -a --delete \
 rm -rf "$TMP_WT"
 
 if [ -f "$DEST/SKILL.md" ]; then
+  chmod 755 "$DEST" 2>/dev/null
+  find "$DEST" -type d -exec chmod 755 {} \; 2>/dev/null
+  find "$DEST" -type f -exec chmod 644 {} \; 2>/dev/null
   log "  ✓ $DEST/SKILL.md 已就绪"
 else
   log "  ✗ $DEST/SKILL.md 缺失（rsync 可能失败）"
