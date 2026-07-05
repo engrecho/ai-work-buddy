@@ -1,6 +1,6 @@
 ---
 name: buddy-skill
-description: AI-Buddy 的官方 SKILL——AI-Buddy 是一个为碎片化内容而生的轻量工作空间，本 SKILL 让 AI 助手通过 API Key 安全地查询、修改、整合用户在 AI-Buddy 中的任务、备忘、阅读收藏、随记。当用户提到"我的任务"、"添加任务"、"整理任务"、"记个备忘"、"把今天读到的文章存下来"、"我有哪些 to do"时使用此 skill。删除和整理任务前必须先列计划并取得用户确认。
+description: AI-Buddy 的官方 SKILL——AI-Buddy 是一个为碎片化内容而生的轻量工作空间，本 SKILL 让 AI 助手通过 API Key 安全地查询、修改、整合用户在 AI-Buddy 中的任务、备忘、阅读收藏、随记。当用户提到"我的任务"、"添加任务"、"整理任务"、"记个备忘"、"把今天读到的文章存下来"、"我有哪些 to do"时使用此 skill。删除和整理任务前必须先列计划并取得用户确认。社媒内容（抖音/B站/小红书/公众号等）解析与下载需配合 ExtractVideoSkill 一起使用。
 ---
 
 # buddy-skill
@@ -97,6 +97,83 @@ node index.js organize-tasks archive-completed
 - 配置文件不参与任何网络请求
 - LLM provider（OpenAI / Anthropic）只看到工具调用结果，看不到 API Key
 
+## 依赖与子技能
+
+buddy-skill 只负责访问 AI-Buddy 的数据。**社媒内容解析（抖音 / B 站 / 小红书 / 公众号 / YouTube / TikTok / 微博 / 快手 / 西瓜 / 知乎 等 1000+ 平台）依赖独立的 ExtractVideoSkill**，由 ExtractVideoSkill 提供底层解析和下载能力。
+
+### ExtractVideoSkill 仓库
+
+- 仓库：<https://github.com/engrecho/ExtractVideoSkill.git>
+- 安装位置：`~/.workbuddy/skills/greenvideo-extract/`（软链或克隆均可）
+- 提供：
+  - `scripts/greenvideo_extract.cjs --json "<分享文本>"` — 解析（返回平台 / 标题 / 封面 / 资源列表）
+  - `scripts/download_videos.cjs "<分享文本>"` — 解析 + 下载到本地
+
+### 安装与检测
+
+```bash
+# 方式 1：直接克隆
+git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.workbuddy/skills/greenvideo-extract
+
+# 方式 2：放在本地任意目录并软链
+git clone https://github.com/engrecho/ExtractVideoSkill.git ~/tools/ExtractVideoSkill
+ln -s ~/tools/ExtractVideoSkill ~/.workbuddy/skills/greenvideo-extract
+```
+
+- AI 助手在调用社媒能力前，必须先 `ls ~/.workbuddy/skills/greenvideo-extract/scripts/`
+- 没装 → 提示用户「需要安装 ExtractVideoSkill（抖音/B站等解析依赖），是否克隆到 `~/.workbuddy/skills/greenvideo-extract`？」并执行克隆
+- 已装但脚本缺失 → 提示「ExtractVideoSkill 目录已存在但缺少 scripts/，请检查仓库完整性或重新克隆」
+- 脚本运行失败 → 把 stderr 末尾 10-20 行原样展示给用户，不要编造成功
+
+### 调用方式（spawn Node 进程）
+
+```bash
+# 解析
+node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --json "<分享文本或URL>"
+
+# 下载到本地（默认输出 ./gv_downloads/）
+node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本或URL>"
+# 也支持环境变量：
+#   GV_OUTPUT=<输出根目录>   默认 ./gv_downloads
+#   GV_NODE=<node 路径>      默认 /Users/jaylon/.workbuddy/binaries/node/versions/22.22.2/bin/node
+```
+
+### 解析结果结构（`--json` 模式，stdout 用 `__GV_JSON_BEGIN__` / `__GV_JSON_END__` marker 分隔）
+
+```json
+{
+  "code": 200,
+  "message": "...",
+  "data": {
+    "vid": "q3Xf96DFFCk",
+    "host": "douyin",
+    "displayTitle": "标题",
+    "videoItemVoList": [
+      { "qualityAlias": "封面", "fileType": "image", "baseUrl": "https://...", "size": 12345, "canDirectDownload": false }
+    ]
+  }
+}
+```
+
+### 平台规范化（保存到 Buddy 时建议使用的 platform 字段值）
+
+| 平台 | platform 字段 |
+|------|---------------|
+| 抖音 | `douyin` |
+| B 站 / b23.tv | `bilibili` |
+| 小红书 | `xiaohongshu` |
+| 公众号 | `wechat` |
+| YouTube / youtu.be | `youtube` |
+| TikTok | `tiktok` |
+| 快手 | `kuaishou` |
+| 微博 | `weibo` |
+| 西瓜视频 | `xigua` |
+| 知乎 | `zhihu` |
+| Twitter / X | `twitter` |
+| Facebook | `facebook` |
+| Instagram | `instagram` |
+| 普通网页 | `web`（默认） |
+
 ## 工作流示例
 
 ### 用户说"整理一下我的任务"
@@ -115,6 +192,45 @@ node index.js organize-tasks archive-completed
 3. AI 明确询问"是否确认删除？此操作不可撤销"
 4. 用户确认后，AI 调用 `deleteTask({ id })`
 5. AI 汇报结果
+
+### 用户发来一个抖音/B站/小红书/公众号等分享链接或复制文本
+
+**核心思路**：buddy-skill 不内置社媒解析，AI 助手先调 ExtractVideoSkill 拿到结构化结果，再写入阅读列表。
+
+**默认行为：自动存入阅读列表**（**不下载**，只解析元信息）
+
+1. AI 看到分享文本或 URL
+2. AI 调 ExtractVideoSkill 解析：
+   ```bash
+   node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --json "<分享文本>"
+   ```
+3. 从返回的 `__GV_JSON_BEGIN__/END__` 之间提取 JSON：
+   - `data.vid` → vid
+   - `data.host` → 规范化成 platform（见上方平台表）
+   - `data.displayTitle` → title
+   - `data.videoItemVoList` 里 `qualityAlias` 含「封面」的项 → `cover_url`
+4. AI 调 `createReading(...)` 写入阅读列表，传入 `platform`、`cover_url`
+5. AI 向用户汇报："已加入阅读列表（{平台} - {标题}）"
+
+**如果用户明确说"下载"、"存到本地"、"离线"**，则调 ExtractVideoSkill 的 download 脚本：
+
+1. AI 执行：
+   ```bash
+   node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本>"
+   ```
+2. 从 stdout 解析 `[OK]   <host>/<vid>  -> <dir>` 那一行拿 `offline_path`
+3. AI 调 `createReading(...)` 时把 `is_offline=true`、`offline_path=...` 带上
+4. AI 汇报："已下载到 {offline_path}"
+
+**如果不确定要不要下载**，AI 应主动询问用户；只有在用户说"自动下载所有"之类的偏好时才跳过询问。
+
+**如果没有安装 ExtractVideoSkill**，AI 应主动询问用户是否从 <https://github.com/engrecho/ExtractVideoSkill.git> 克隆到 `~/.workbuddy/skills/greenvideo-extract/`；用户同意后执行 `git clone`，再继续上面流程。
+
+### 用户说"看看我最近存的抖音"
+
+1. AI 调 `listReading({ limit: 50 })`
+2. 过滤 `platform === 'douyin'` 的条目
+3. 按时间倒序展示给用户
 
 ## API 参考
 
@@ -144,8 +260,8 @@ node index.js organize-tasks archive-completed
 | `/memos` | GET | 备忘列表（支持 `q`、`memo_type`） |
 | `/memos` | POST | 创建备忘 |
 | `/memos/:id` | GET | 备忘详情 |
-| `/reading` | GET | 阅读收藏列表（支持 `q`、`is_read`、`is_starred`） |
-| `/reading` | POST | 添加阅读收藏 |
+| `/reading` | GET | 阅读收藏列表（支持 `q`、`is_read`、`is_starred`、`platform` 过滤） |
+| `/reading` | POST | 添加阅读收藏（支持 `url` / `title` / `summary` / `platform` / `cover_url` / `is_offline` / `offline_path`） |
 | `/reading/:id` | GET | 阅读详情 |
 | `/quick-notes` | GET | 随记列表 |
 | `/quick-notes` | POST | 创建随记 |
@@ -227,6 +343,11 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   archive-completed      归档 30 天前已完成的任务
   set-priority-by-due    根据截止日期自动设置优先级
   clean-duplicates       归档重复任务
+
+社媒内容（抖音/B站/小红书/公众号等）解析与下载需先安装 ExtractVideoSkill：
+  git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.workbuddy/skills/greenvideo-extract
+  node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --json "<分享文本或URL>"
+  node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本或URL>"
 ```
 
 ## 故障排查

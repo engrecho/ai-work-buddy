@@ -41,6 +41,11 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js add-task --title "完成 Q3 报告" --priority high
   node index.js organize-tasks archive-completed
   node index.js delete-task 42
+
+社媒内容（抖音/B站/小红书/公众号等）解析与下载：
+  需先安装 ExtractVideoSkill：
+    git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.workbuddy/skills/greenvideo-extract
+  然后直接调它的脚本，拿到结果后用本 SKILL 的 add-reading 写入 Buddy。
 `);
 }
 
@@ -309,6 +314,10 @@ async function cmdAddReading(flags) {
   if (flags.summary) data.summary = flags.summary;
   if (flags.category) data.category = flags.category;
   if (flags.tags) data.tags = flags.tags.split(',').map(s => s.trim()).filter(Boolean);
+  if (flags.platform) data.platform = flags.platform;
+  if (flags.cover) data.cover_url = flags.cover;
+  if (flags['offline-path']) data.offline_path = flags['offline-path'];
+  if (flags.offline != null) data.is_offline = flags.offline === 'true' || flags.offline === true;
 
   const created = await client.createReading(data);
   console.log('✓ 阅读收藏已添加');

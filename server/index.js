@@ -13,6 +13,7 @@ import {
   updateUserProfile, changePassword,
   createApiKeyForUser, listApiKeysForUser, revokeApiKey, getUserByApiKey
 } from './auth.js';
+import { parseShare, parseAndDownload } from './extract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -32,6 +33,43 @@ app.use(cookieParser());
 // 健康检查
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ══════════════════════════════════════════════════════════════
+// 社媒内容解析（抖音/B站/小红书/公众号等分享文本一键识别）
+// ══════════════════════════════════════════════════════════════
+
+// 仅解析（不下载）：返回 title / platform / cover_url / summary 等
+app.post('/api/extract', authMiddleware, async (req, res) => {
+  const input = (req.body?.input || req.body?.text || '').toString();
+  if (!input) {
+    return res.json({ data: null, error: { message: '缺少 input 字段' } });
+  }
+  try {
+    const result = await parseShare(input);
+    if (result.code !== 200) {
+      return res.json({ data: result, error: { message: result.message || '解析失败' } });
+    }
+    return res.json({ data: result, error: null });
+  } catch (err) {
+    console.error('extract error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 解析 + 下载到 server 端本地（对应前端"离线到本地"勾选框）
+app.post('/api/extract/download', authMiddleware, async (req, res) => {
+  const input = (req.body?.input || req.body?.text || '').toString();
+  if (!input) {
+    return res.json({ data: null, error: { message: '缺少 input 字段' } });
+  }
+  try {
+    const result = await parseAndDownload(input);
+    return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
+  } catch (err) {
+    console.error('extract/download error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
 });
 
 // ── 认证路由 ────────────────────────────────────────────────
@@ -773,6 +811,39 @@ app.get('/api/v1/task-groups', apiKeyAuth, async (req, res) => {
 // 获取当前用户信息（验证 API Key 用）
 app.get('/api/v1/me', apiKeyAuth, async (req, res) => {
   res.json({ data: req.user, error: null });
+});
+
+// ══════════════════════════════════════════════════════════════
+// SKILL API：社媒内容解析（供 buddy-skill / 外部工具调用）
+// ══════════════════════════════════════════════════════════════
+
+app.post('/api/v1/extract', apiKeyAuth, async (req, res) => {
+  const input = (req.body?.input || req.body?.text || '').toString();
+  if (!input) {
+    return res.json({ data: null, error: { message: '缺少 input 字段' } });
+  }
+  try {
+    const result = await parseShare(input);
+    if (result.code !== 200) {
+      return res.json({ data: result, error: { message: result.message || '解析失败' } });
+    }
+    return res.json({ data: result, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+app.post('/api/v1/extract/download', apiKeyAuth, async (req, res) => {
+  const input = (req.body?.input || req.body?.text || '').toString();
+  if (!input) {
+    return res.json({ data: null, error: { message: '缺少 input 字段' } });
+  }
+  try {
+    const result = await parseAndDownload(input);
+    return res.json({ data: result, error: result.code === 200 ? null : { message: result.message } });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
 });
 
 // ── 工具函数：SKILL API 用的 SQL 构建 ─────────────────────

@@ -110,6 +110,10 @@ class BuddyClient {
     return this.request('GET', '/reading', { query: filters });
   }
 
+  getReading(id) {
+    return this.request('GET', `/reading/${id}`);
+  }
+
   createReading(data) {
     return this.request('POST', '/reading', { body: data });
   }

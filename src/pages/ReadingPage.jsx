@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Plus, BookOpen, ExternalLink, Check, Loader2, Sparkles,
   Star, Tag, Trash2, Menu, X, ChevronDown, AlertTriangle,
+  Wand2, Download, PlayCircle, FileText, Link as LinkIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { genId } from "@/lib/utils";
@@ -16,6 +17,29 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+// ─── 平台图标 / 颜色映射 ──────────────────────────────────────
+const PLATFORM_META = {
+  douyin:       { label: '抖音',     color: '#fe2c55', Icon: PlayCircle },
+  bilibili:     { label: 'B站',      color: '#fb7299', Icon: PlayCircle },
+  xiaohongshu:  { label: '小红书',   color: '#ff2442', Icon: FileText },
+  wechat:       { label: '公众号',   color: '#07c160', Icon: FileText },
+  youtube:      { label: 'YouTube',  color: '#ff0000', Icon: PlayCircle },
+  tiktok:       { label: 'TikTok',   color: '#010101', Icon: PlayCircle },
+  kuaishou:     { label: '快手',     color: '#fed91b', Icon: PlayCircle },
+  weibo:        { label: '微博',     color: '#e6162d', Icon: FileText },
+  xigua:        { label: '西瓜',     color: '#ff6633', Icon: PlayCircle },
+  zhihu:        { label: '知乎',     color: '#0084ff', Icon: FileText },
+  twitter:      { label: 'X',        color: '#000000', Icon: FileText },
+  facebook:     { label: 'Facebook', color: '#1877f2', Icon: FileText },
+  instagram:    { label: 'IG',       color: '#e1306c', Icon: FileText },
+  web:          { label: '网页',     color: '#6b7280', Icon: LinkIcon },
+  other:        { label: '其他',     color: '#6b7280', Icon: LinkIcon },
+};
+
+function platformMeta(p) {
+  return PLATFORM_META[p] || PLATFORM_META.other;
+}
 
 function tagStyle(color) {
   return {
@@ -126,14 +150,22 @@ const ReadingPage = () => {
   const [tags, setTags] = useState([]);
   const [activeTag, setActiveTag] = useState("all");
   const [readFilter, setReadFilter] = useState("all");
+  const [platformFilter, setPlatformFilter] = useState("all");
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [form, setForm] = useState({ url: "", title: "", summary: "", tags: [], is_read: false, is_starred: false });
+  const [form, setForm] = useState({
+    url: "", title: "", summary: "", cover_url: "", platform: "web",
+    tags: [], is_read: false, is_starred: false, is_offline: false,
+  });
   const [fetching, setFetching] = useState(false);
   const [fetchingTip, setFetchingTip] = useState("");
   const [classifying, setClassifying] = useState(false);
+  const [shareInput, setShareInput] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const urlFetchedRef = useRef("");
 
   useEffect(() => {
@@ -154,6 +186,45 @@ const ReadingPage = () => {
   };
 
   // ── 文章操作 ──────────────────────────────────────────────────────
+  // 粘贴抖音/B站/小红书等分享文本 → 一键解析
+  const handleExtractShare = async () => {
+    const text = shareInput.trim();
+    if (!text) return;
+    setExtracting(true);
+    setExtractError("");
+    setFetchingTip("正在识别分享内容…");
+    try {
+      const res = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ input: text }),
+      });
+      const json = await res.json();
+      if (json.error || !json.data) {
+        throw new Error(json.error?.message || '解析失败');
+      }
+      const d = json.data;
+      if (d.code !== 200) {
+        throw new Error(d.message || '解析失败');
+      }
+      setForm((prev) => ({
+        ...prev,
+        url: d.url || prev.url,
+        title: d.title || prev.title,
+        summary: d.summary || prev.summary,
+        cover_url: d.cover_url || prev.cover_url,
+        platform: d.platform || prev.platform,
+      }));
+      setFetchingTip("");
+    } catch (e) {
+      setExtractError(e.message);
+      setFetchingTip("");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const handleUrlBlur = async () => {
     const url = form.url.trim();
     if (!url || url === urlFetchedRef.current) return;
@@ -197,16 +268,51 @@ const ReadingPage = () => {
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
-    await supabase.from("reading_items").insert([{ id: genId(), ...form }]);
-    fetchItems();
-    setIsAddOpen(false);
-    resetForm();
+    setDownloading(true);
+    try {
+      let insertData = { id: genId(), ...form };
+
+      // 如果勾选"离线到本地"，先调 download 接口拿到 offline_path
+      if (form.is_offline && (form.url || shareInput)) {
+        const res = await fetch('/api/extract/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ input: form.url || shareInput }),
+        });
+        const json = await res.json();
+        if (json.error) {
+          throw new Error(json.error.message || '离线下载失败');
+        }
+        if (json.data?.code === 200) {
+          insertData.is_offline = true;
+          insertData.offline_path = json.data.offline_path || null;
+        } else {
+          // 下载失败但仍可入阅读列表
+          insertData.is_offline = false;
+        }
+      }
+
+      await supabase.from("reading_items").insert([insertData]);
+      fetchItems();
+      setIsAddOpen(false);
+      resetForm();
+    } catch (e) {
+      setExtractError(`保存失败：${e.message}`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const resetForm = () => {
     urlFetchedRef.current = "";
     setFetchingTip("");
-    setForm({ url: "", title: "", summary: "", tags: [], is_read: false, is_starred: false });
+    setExtractError("");
+    setShareInput("");
+    setForm({
+      url: "", title: "", summary: "", cover_url: "", platform: "web",
+      tags: [], is_read: false, is_starred: false, is_offline: false,
+    });
   };
 
   const toggleRead = async (item) => {
@@ -235,6 +341,7 @@ const ReadingPage = () => {
     else if (activeTag !== "all") { if (!(item.tags || []).includes(activeTag)) return false; }
     if (readFilter === "unread") return !item.is_read;
     if (readFilter === "read") return item.is_read;
+    if (platformFilter !== "all" && (item.platform || "web") !== platformFilter) return false;
     return true;
   });
 
@@ -358,6 +465,42 @@ const ReadingPage = () => {
               })}
             </div>
 
+            {/* 平台过滤器 */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none flex-shrink-0">
+              <button
+                onClick={() => setPlatformFilter("all")}
+                className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  platformFilter === "all"
+                    ? "bg-gray-900 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                }`}
+              >
+                全平台
+              </button>
+              {Object.entries(PLATFORM_META).map(([k, v]) => {
+                const count = items.filter((i) => (i.platform || "web") === k).length;
+                if (count === 0) return null;
+                const active = platformFilter === k;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setPlatformFilter(k)}
+                    className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      active
+                        ? "border-0"
+                        : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                    }`}
+                    style={active ? { backgroundColor: v.color + "22", color: v.color } : {}}
+                  >
+                    {v.label}
+                    <span className={`text-xs px-1 rounded-full ${
+                      active ? "bg-white/30" : "bg-gray-100 text-gray-500"
+                    }`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button className="flex-shrink-0 border-0" size="sm" style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}>
@@ -370,6 +513,48 @@ const ReadingPage = () => {
                   <DialogTitle>添加文章</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleAddSubmit} className="space-y-4 mt-4">
+                  {/* 粘贴识别：抖音/B站/小红书/公众号等分享内容 */}
+                  <div className="bg-gradient-to-br from-indigo-50/60 to-purple-50/40 border border-indigo-100 rounded-lg p-3">
+                    <label className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                      <Wand2 className="h-3.5 w-3.5 text-indigo-500" />
+                      粘贴抖音等网站复制内容，一键识别
+                    </label>
+                    <div className="flex gap-2">
+                      <Textarea
+                        value={shareInput}
+                        onChange={(e) => setShareInput(e.target.value)}
+                        placeholder="例如：3.58 复制打开抖音，看看【xxx的作品】标题 # 标签 https://v.douyin.com/xxx..."
+                        rows={2}
+                        className="resize-none flex-1 bg-white"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleExtractShare}
+                        disabled={extracting || !shareInput.trim()}
+                        className="border-0 flex-shrink-0 self-start"
+                        style={{ backgroundColor: "#6366f1", color: "#fff" }}
+                      >
+                        {extracting
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <><Wand2 className="h-4 w-4 mr-1" />识别</>}
+                      </Button>
+                    </div>
+                    {extractError && (
+                      <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {extractError}
+                      </p>
+                    )}
+                    {fetchingTip && extracting && (
+                      <p className="text-xs text-indigo-500 mt-1.5 flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {fetchingTip}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      支持抖音 / B站 / 小红书 / 公众号 / YouTube / TikTok / 微博 / 快手 / 西瓜 / 知乎等 1000+ 平台
+                    </p>
+                  </div>
                   <div>
                     <label className="text-sm font-medium mb-1.5 block">文章链接</label>
                     <div className="relative">
@@ -410,6 +595,44 @@ const ReadingPage = () => {
                       className="resize-none"
                     />
                   </div>
+                  {/* 平台 + 离线到本地 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium mb-1.5 block">平台</label>
+                      <select
+                        value={form.platform || 'web'}
+                        onChange={(e) => setForm({ ...form, platform: e.target.value })}
+                        className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      >
+                        {Object.entries(PLATFORM_META).map(([k, v]) => (
+                          <option key={k} value={k}>{v.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <label className={`flex items-start gap-2 px-3 py-2 rounded-md border w-full cursor-pointer transition-colors ${
+                        form.is_offline
+                          ? "bg-indigo-50 border-indigo-200"
+                          : "bg-white border-gray-200 hover:bg-gray-50"
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={form.is_offline}
+                          onChange={(e) => setForm({ ...form, is_offline: e.target.checked })}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 flex items-center gap-1">
+                            <Download className="h-3.5 w-3.5" />
+                            离线到本地
+                          </div>
+                          <div className="text-xs text-gray-500 leading-snug">
+                            视频/图/文章 markdown 下载到服务端
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-sm font-medium">标签</label>
@@ -445,8 +668,9 @@ const ReadingPage = () => {
                   </div>
                   <div className="flex justify-end gap-2 pt-2">
                     <Button type="button" variant="outline" onClick={() => { setIsAddOpen(false); resetForm(); }}>取消</Button>
-                    <Button type="submit" className="border-0" style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }} disabled={fetching || classifying}>
-                      {(fetching || classifying) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}添加
+                    <Button type="submit" className="border-0" style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }} disabled={fetching || classifying || extracting || downloading}>
+                      {(fetching || classifying || extracting || downloading) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                      {form.is_offline ? "下载并添加" : "添加"}
                     </Button>
                   </div>
                 </form>
@@ -526,12 +750,49 @@ function SideItem({ active, onClick, label, count, icon, color }) {
 
 // ── 子组件：文章卡片 ──────────────────────────────────────────────
 function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete }) {
+  const pm = platformMeta(item.platform);
+  const PlatformIcon = pm.Icon;
   return (
     <div className={`
-      bg-white rounded-xl border border-gray-100 p-4
+      bg-white rounded-xl border border-gray-100 overflow-hidden
       hover:shadow-md transition-all duration-200 flex flex-col
       ${item.is_read ? "opacity-60" : ""}
     `}>
+      {/* 封面图（仅当 cover_url 存在时显示） */}
+      {item.cover_url && (
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block relative aspect-[16/9] bg-gray-100 overflow-hidden group"
+        >
+          <img
+            src={item.cover_url}
+            alt={item.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+          {/* 平台角标 */}
+          <div
+            className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white shadow-sm"
+            style={{ backgroundColor: pm.color }}
+          >
+            <PlatformIcon className="h-3 w-3" />
+            {pm.label}
+          </div>
+          {/* 离线标识 */}
+          {item.is_offline && (
+            <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-black/60 text-white backdrop-blur-sm">
+              <Download className="h-3 w-3" />
+              已离线
+            </div>
+          )}
+        </a>
+      )}
+
+      <div className="p-4 flex flex-col flex-1">
       {/* 第一行：已读按钮 + 标题 + 星标按钮 */}
       <div className="flex items-start gap-2 mb-2">
         {/* 已读 toggle */}
@@ -572,6 +833,25 @@ function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete }) {
           <Star className="h-4 w-4" fill={item.is_starred ? "currentColor" : "none"} />
         </button>
       </div>
+
+      {/* 无封面时显示平台+离线小标签 */}
+      {!item.cover_url && (
+        <div className="flex items-center gap-1.5 mb-2 -mt-1">
+          <span
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium text-white"
+            style={{ backgroundColor: pm.color }}
+          >
+            <PlatformIcon className="h-3 w-3" />
+            {pm.label}
+          </span>
+          {item.is_offline && (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+              <Download className="h-3 w-3" />
+              已离线
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 内容摘要：最多3行，撑满剩余空间 */}
       <div className="flex-1 min-h-0">
@@ -620,6 +900,7 @@ function ArticleCard({ item, tagMap, onToggleRead, onToggleStar, onDelete }) {
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
+      </div>
       </div>
     </div>
   );

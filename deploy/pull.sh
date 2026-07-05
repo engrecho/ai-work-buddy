@@ -52,8 +52,39 @@ yarn install --silent
 cd "$PROJECT_DIR"
 
 # 5. 重启后端服务
-log "[5/5] 重启 PM2 后端服务..."
+log "[5/6] 重启 PM2 后端服务..."
 pm2 restart ai-buddy-api 2>/dev/null || pm2 start ecosystem.config.cjs
 pm2 save
+
+# 6. 增量 SQL 迁移（如果存在）：只跑标记为 migrate-*.sql 且尚未执行过的
+log "[6/6] 检查 SQL 迁移..."
+MIGRATE_DIR="$PROJECT_DIR/deploy"
+APPLIED_FILE="$MIGRATE_DIR/.applied_migrations"
+
+touch "$APPLIED_FILE"
+
+shopt -s nullglob
+for sql_file in "$MIGRATE_DIR"/migrate-*.sql; do
+  fname=$(basename "$sql_file")
+  if ! grep -qx "$fname" "$APPLIED_FILE" 2>/dev/null; then
+    log "  → 应用迁移: $fname"
+    # 从 .env 读 DB 凭据；fallback 到 PM2 配
+    if [ -f "$PROJECT_DIR/.env" ]; then
+      set -a; . "$PROJECT_DIR/.env"; set +a
+    elif [ -f "$PROJECT_DIR/server/.env" ]; then
+      set -a; . "$PROJECT_DIR/server/.env"; set +a
+    fi
+    DB_USER=${DB_USER:-buddy}
+    DB_NAME=${DB_NAME:-buddy}
+    DB_PASSWORD=${DB_PASSWORD:-}
+    if mysql -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < "$sql_file" 2>>"$LOG_FILE"; then
+      echo "$fname" >> "$APPLIED_FILE"
+      log "    ✓ $fname 成功"
+    else
+      log "    ✗ $fname 失败，查看 $LOG_FILE"
+    fi
+  fi
+done
+shopt -u nullglob
 
 log "========== 部署完成 ($CURRENT_COMMIT) =========="

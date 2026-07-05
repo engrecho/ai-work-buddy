@@ -187,16 +187,22 @@ CREATE TABLE `reading_items` (
     `id` BIGINT NOT NULL PRIMARY KEY,
     `user_id` BIGINT NOT NULL,
     `url` TEXT NOT NULL,
+    `platform` VARCHAR(50) DEFAULT NULL COMMENT '社媒平台：douyin/bilibili/xiaohongshu/wechat/youtube/tiktok/kuaishou/weibo/other/web',
     `title` VARCHAR(500),
     `summary` LONGTEXT,
+    `cover_url` TEXT DEFAULT NULL COMMENT '封面图 URL',
     `category` VARCHAR(100) DEFAULT 'work',
     `is_read` TINYINT(1) DEFAULT 0,
     `is_starred` TINYINT(1) DEFAULT 0,
+    `is_offline` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已下载到本地',
+    `offline_path` VARCHAR(500) DEFAULT NULL COMMENT '离线内容在 server 上的存储路径',
     `tags` JSON,
     `deleted_at` TIMESTAMP NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_reading_items_deleted_at` (`deleted_at`),
-    INDEX `idx_reading_items_created_at` (`created_at` DESC)
+    INDEX `idx_reading_items_created_at` (`created_at` DESC),
+    INDEX `idx_reading_items_platform` (`platform`),
+    INDEX `idx_reading_items_is_offline` (`is_offline`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================

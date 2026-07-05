@@ -52,8 +52,9 @@ export const TABLE_COLUMNS = {
     'id', 'user_id', 'title', 'content', 'related_task_ids', 'created_at', 'updated_at'
   ],
   reading_items: [
-    'id', 'user_id', 'url', 'title', 'summary', 'category', 'is_read', 'is_starred',
-    'tags', 'deleted_at', 'created_at'
+    'id', 'user_id', 'url', 'platform', 'title', 'summary', 'cover_url', 'category',
+    'is_read', 'is_starred', 'is_offline', 'offline_path', 'tags',
+    'deleted_at', 'created_at'
   ],
   quick_notes: [
     'id', 'user_id', 'content', 'tags', 'created_at'
@@ -93,5 +94,5 @@ export const DATETIME_COLUMNS = {
 // ── BOOLEAN 列 ───────────────────────────────────────────────
 export const BOOLEAN_COLUMNS = {
   tasks: ['is_project', 'need_report'],
-  reading_items: ['is_read', 'is_starred'],
+  reading_items: ['is_read', 'is_starred', 'is_offline'],
 };

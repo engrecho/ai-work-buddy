@@ -5,3 +5,15 @@ build
 .env.local
 .env.*.local
 server/node_modules
+
+# 个人 / 测试产物，不入库
+.workbuddy/
+*.mp4
+*.mov
+*.avi
+__test__/
+server/__test__/
+
+# 仅供项目所有者的私有运维资料（密钥、服务器信息、CI 凭证等）
+# 不入库；本地保留以备 AI 助手和 Owner 查阅
+JustForMe/
