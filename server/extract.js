@@ -97,6 +97,29 @@ export function extractUrl(text) {
 }
 
 /**
+ * 去掉 HTML 标签 + 解码常见 HTML 实体。
+ * 用于清洗 greenvideo 抽取出来的「公众号原始 HTML 标题」等脏数据。
+ * 例：`<span class="js_title_inner">极空间重磅更新</span>` -> `极空间重磅更新`
+ */
+export function stripHtml(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/<[^>]+>/g, ' ')         // 标签替换成空格（处理 <a><b> 紧贴的情况）
+    .replace(/&nbsp;/g, ' ')         // 常见实体
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCodePoint(Number(n)); } catch { return ''; }
+    })
+    .replace(/\s+/g, ' ')            // 合并空白
+    .trim();
+}
+
+/**
  * 解析一段分享文本/URL，返回结构化的元信息。
  * @param {string} input  抖音分享文本 / 视频 URL / 文章 URL
  * @returns {Promise<{
@@ -210,12 +233,16 @@ export async function parseShare(input) {
   const hasVideo = items.some((i) => i.fileType === 'video' && !/markdown/i.test(i.quality || ''));
   const hasMarkdown = Boolean(mdText);
 
+  // 清洗 title：greenvideo 直接把公众号原始 HTML 塞回来（带 <span class=...>）
+  const rawTitle = data.displayTitle || data.title || '';
+  const cleanTitle = stripHtml(rawTitle);
+
   return {
     code: 200,
     message: j.message || 'ok',
     url: url || '',
     platform,
-    title: data.displayTitle || data.title || '',
+    title: cleanTitle,
     vid: data.vid || '',
     cover_url: cover,
     host: data.host || '',
@@ -275,12 +302,16 @@ export async function parseAndDownload(input) {
       // 从输出里抓 [OK]   <host>/<vid>  -> <dir> 行
       const m = stdout.match(/\[OK\]\s+(\S+)\/(\S+)\s+->\s+(\S+)/);
       if (m) {
+        // 落库只存 basename（避免绑定到绝对路径，方便以后换 OUTPUT_ROOT）
+        const dirAbs = m[3].replace(/\/+$/, '');
+        const dirName = path.basename(dirAbs);
         resolve({
           code: 200,
           message: '下载完成',
           host: m[1],
           vid: m[2],
-          offline_path: m[3],
+          offline_path: dirName,
+          offline_path_abs: dirAbs,
           stdout,
         });
         return;
@@ -297,15 +328,27 @@ export async function parseAndDownload(input) {
 }
 
 /**
- * 安全解析 offline_path：必须是 OUTPUT_ROOT 的子目录
- * 防止路径穿越攻击（../../../etc/passwd）
+ * 安全解析 offline_path：必须是 OUTPUT_ROOT 的子目录或等于 OUTPUT_ROOT。
+ * 接受两种入参：
+ *   - 绝对路径（download 脚本输出）：校验必须位于 OUTPUT_ROOT 内
+ *   - 子目录 basename（落库形态）：拼回 OUTPUT_ROOT 后再校验
+ * 防止路径穿越攻击（../../../etc/passwd）。
  */
 export function resolveOfflinePath(offlinePath) {
   if (!offlinePath) return null;
   const root = path.resolve(OUTPUT_ROOT);
-  const resolved = path.resolve(offlinePath);
-  // 必须以 root + path.sep 开头
-  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+  // 兼容末尾斜杠
+  const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+
+  let resolved = path.resolve(String(offlinePath));
+
+  // 如果是 basename（不含分隔符），拼到 OUTPUT_ROOT 下
+  if (!String(offlinePath).includes(path.sep) && !String(offlinePath).includes('/')) {
+    resolved = path.join(root, resolved);
+  }
+
+  // 必须以 root + sep 开头，或等于 root
+  if (resolved !== root && !resolved.startsWith(rootWithSep)) {
     return null;
   }
   return resolved;
