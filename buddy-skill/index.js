@@ -320,8 +320,12 @@ async function cmdAddReading(flags) {
   if (flags.tags) data.tags = flags.tags.split(',').map(s => s.trim()).filter(Boolean);
   if (flags.platform) data.platform = flags.platform;
   if (flags.cover) data.cover_url = flags.cover;
+  if (flags['cover-url']) data.cover_url = flags['cover-url'] || flags.cover;
   if (flags['offline-path']) data.offline_path = flags['offline-path'];
-  if (flags.offline != null) data.is_offline = flags.offline === 'true' || flags.offline === true;
+  if (flags.offline != null || flags['is-offline'] != null) {
+    const v = flags.offline != null ? flags.offline : flags['is-offline'];
+    data.is_offline = v === 'true' || v === true;
+  }
 
   const created = await client.createReading(data);
   console.log('✓ 阅读收藏已添加');
