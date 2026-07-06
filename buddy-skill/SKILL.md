@@ -106,7 +106,7 @@ buddy-skill 只负责访问 AI-Buddy 的数据。**社媒内容解析（抖音 /
 - 仓库：<https://github.com/engrecho/ExtractVideoSkill.git>
 - 安装位置：`~/.workbuddy/skills/greenvideo-extract/`（软链或克隆均可）
 - 提供：
-  - `scripts/greenvideo_extract.cjs --json "<分享文本>"` — 解析（返回平台 / 标题 / 封面 / 资源列表）
+  - `scripts/video_extract.cjs --json "<分享文本>"` — 解析（返回平台 / 标题 / 封面 / 资源列表）
   - `scripts/download_videos.cjs "<分享文本>"` — 解析 + 下载到本地
 
 ### 安装与检测
@@ -129,7 +129,7 @@ ln -s ~/tools/ExtractVideoSkill ~/.workbuddy/skills/greenvideo-extract
 
 ```bash
 # 解析
-node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --json "<分享文本或URL>"
+node ~/.workbuddy/skills/greenvideo-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
 
 # 下载到本地（默认输出 ./gv_downloads/）
 node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本或URL>"
@@ -202,7 +202,7 @@ node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享
 1. AI 看到分享文本或 URL
 2. AI 调 ExtractVideoSkill 解析：
    ```bash
-   node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --json "<分享文本>"
+   node ~/.workbuddy/skills/greenvideo-extract/scripts/video_extract.cjs --json "<分享文本>"
    ```
 3. 从返回的 `__GV_JSON_BEGIN__/END__` 之间提取 JSON：
    - `data.vid` → vid
@@ -338,6 +338,8 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js list-reading              列出阅读收藏
   node index.js add-reading --url "..."   添加阅读收藏
   node index.js where-is-key              显示配置文件位置
+  node index.js doctor                     环境诊断（检查 Node/配置/ExtractVideoSkill/API）
+  node index.js --version                  显示版本号
 
 整理策略 strategy 取值：
   archive-completed      归档 30 天前已完成的任务
@@ -346,7 +348,7 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
 
 社媒内容（抖音/B站/小红书/公众号等）解析与下载需先安装 ExtractVideoSkill：
   git clone https://github.com/engrecho/ExtractVideoSkill.git ~/.workbuddy/skills/greenvideo-extract
-  node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --json "<分享文本或URL>"
+  node ~/.workbuddy/skills/greenvideo-extract/scripts/video_extract.cjs --json "<分享文本或URL>"
   node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本或URL>"
 ```
 
@@ -366,6 +368,9 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
 ```bash
 # 显示配置文件位置
 node index.js where-is-key
+
+# 环境诊断（检查 Node/配置/ExtractVideoSkill/API 连接）
+node index.js doctor
 
 # 测试连接
 DEBUG=1 node index.js test

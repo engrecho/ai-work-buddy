@@ -24,7 +24,7 @@ buddy-skill **不内置社媒解析**。当你收到社媒分享链接/复制文
 1. 先检查 \`~/.workbuddy/skills/greenvideo-extract/scripts/\` 是否存在
 2. **没装** → 提示用户并询问是否从 <https://github.com/engrecho/ExtractVideoSkill.git> 克隆到 \`~/.workbuddy/skills/greenvideo-extract/\`（用户同意后执行 \`git clone\`）
 3. **已装** → 调用 ExtractVideoSkill：
-   - 解析：\`node ~/.workbuddy/skills/greenvideo-extract/scripts/greenvideo_extract.cjs --json "<分享文本>"\`
+   - 解析：\`node ~/.workbuddy/skills/greenvideo-extract/scripts/video_extract.cjs --json "<分享文本>"\`
    - 下载：\`node ~/.workbuddy/skills/greenvideo-extract/scripts/download_videos.cjs "<分享文本>"\`
 4. 拿到 \`{title, host, vid, videoItemVoList, ...}\` 后，写入 Buddy 阅读列表：
    - \`title\` = data.displayTitle

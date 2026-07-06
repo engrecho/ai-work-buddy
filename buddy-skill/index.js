@@ -10,6 +10,8 @@ import { formatOrganizePlan, formatDeletePlan } from './tools/confirm.js';
 const args = process.argv.slice(2);
 const command = args[0];
 
+const VERSION = '1.0.0';
+
 function printUsage() {
   console.log(`
 buddy-skill — AI-Buddy 官方 SKILL CLI
@@ -30,6 +32,8 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js list-reading              列出阅读收藏
   node index.js add-reading --url "..."   添加阅读收藏
   node index.js where-is-key              显示配置文件位置
+  node index.js doctor                     环境诊断（检查 Node/配置/ExtractVideoSkill/API）
+  node index.js --version                  显示版本号
 
 整理策略 strategy 取值：
   archive-completed      归档 30 天前已完成的任务
@@ -334,10 +338,67 @@ async function cmdWhereIsKey() {
   console.log(`  4. 写入 ${getConfigPath()}（chmod 600）`);
 }
 
+async function cmdDoctor() {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const os = await import('node:os');
+  const { getConfigPath, loadConfig } = await import('./lib/config.js');
+
+  console.log('buddy-skill doctor — 环境诊断\n');
+
+  // 1. Node.js 版本
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  console.log(`Node.js: ${process.version} ${nodeMajor >= 18 ? '✓' : '✗ 需要 >=18'}`);
+
+  // 2. 配置文件
+  const cfgPath = getConfigPath();
+  const cfg = loadConfig();
+  if (cfg) {
+    console.log(`配置文件: ${cfgPath} ✓ (api_base: ${cfg.api_base})`);
+    console.log(`API Key: ${cfg.api_key ? '已设置 ✓' : '✗ 缺少 api_key'}`);
+  } else {
+    console.log(`配置文件: ${cfgPath} ✗ 未找到（运行 node index.js init 初始化）`);
+  }
+
+  // 3. ExtractVideoSkill 安装检查
+  const skillDir = path.join(os.homedir(), '.workbuddy', 'skills', 'greenvideo-extract');
+  const extractScript = path.join(skillDir, 'scripts', 'video_extract.cjs');
+  const downloadScript = path.join(skillDir, 'scripts', 'download_videos.cjs');
+  if (fs.existsSync(extractScript)) {
+    console.log(`ExtractVideoSkill: ${extractScript} ✓`);
+  } else {
+    console.log(`ExtractVideoSkill: ✗ 未安装（${extractScript} 不存在）`);
+    console.log(`  安装: git clone https://github.com/engrecho/ExtractVideoSkill.git ${skillDir}`);
+  }
+  if (fs.existsSync(downloadScript)) {
+    console.log(`download_videos.cjs: ✓`);
+  }
+
+  // 4. API 连接测试（仅在配置完整时）
+  if (cfg && cfg.api_key) {
+    try {
+      const client = new BuddyClient(cfg);
+      const me = await client.me();
+      console.log(`API 连接: ✓ (用户: ${me.nickname || me.username})`);
+    } catch (err) {
+      console.log(`API 连接: ✗ ${err.message}`);
+    }
+  }
+}
+
 async function main() {
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     printUsage();
     return;
+  }
+
+  if (command === '--version' || command === '-v') {
+    console.log(VERSION);
+    return;
+  }
+
+  if (command === 'doctor') {
+    return cmdDoctor();
   }
 
   const flags = parseFlags(args.slice(1));

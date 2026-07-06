@@ -1,6 +1,6 @@
 // 社媒内容解析与下载服务
 // 封装 ~/.workbuddy/skills/greenvideo-extract/scripts/ 下的两个脚本：
-//   - greenvideo_extract.cjs --json    解析分享文本/URL，返回 {title, host, vid, items, ...}
+//   - video_extract.cjs --json    解析分享文本/URL，返回 {title, host, vid, items, ...}
 //   - download_videos.cjs              解析 + 下载所有资源到本地目录
 //
 // 注意：所有 spawn 都加 60s 超时；解析失败要原样返回错误，不要吞。
@@ -22,7 +22,7 @@ const NODE_BIN = process.env.GV_NODE || process.execPath;
 // 输出根目录：默认 ./gv_downloads，相对当前进程工作目录
 const OUTPUT_ROOT = process.env.GV_OUTPUT || path.join(process.cwd(), 'gv_downloads');
 
-const EXTRACT_SCRIPT = path.join(SKILL_DIR, 'scripts', 'greenvideo_extract.cjs');
+const EXTRACT_SCRIPT = path.join(SKILL_DIR, 'scripts', 'video_extract.cjs');
 const DOWNLOAD_SCRIPT = path.join(SKILL_DIR, 'scripts', 'download_videos.cjs');
 
 const SPAWN_TIMEOUT_MS = 90 * 1000; // 90s

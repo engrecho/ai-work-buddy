@@ -25,7 +25,7 @@ SKILLS_DIR="/root/.openclaw/workspace/skills"
 PROJECT_DIR="/www/wwwroot/buddy.bajiaolu.cn"
 GIT_MIRROR_DIR="/var/cache/git-mirrors"
 
-EXTRACT_REPO="https://github.com/engrecho/ExtractVideoSkill.git"
+EXTRACT_REPO="https://gh-proxy.com/https://github.com/engrecho/ExtractVideoSkill.git"
 EXTRACT_BRANCH="main"
 EXTRACT_DIR_NAME="ExtractVideoSkill"
 
@@ -82,11 +82,12 @@ else
   log "  ✗ $DEST/SKILL.md 缺失（rsync 可能失败）"
 fi
 
-# 1.3 同时保留 /root/.workbuddy/skills/ExtractVideoSkill 软链（保持旧依赖兼容）
+# 1.3 同时保留 /root/.workbuddy/skills/ 软链（保持旧依赖兼容 + 新 skill name）
 mkdir -p /root/.workbuddy/skills
 ln -sfn "$DEST" "/root/.workbuddy/skills/ExtractVideoSkill"
 ln -sfn "$DEST" "/root/.workbuddy/skills/greenvideo-extract"
-log "  ✓ /root/.workbuddy/skills/{ExtractVideoSkill,greenvideo-extract} symlink 已刷新"
+ln -sfn "$DEST" "/root/.workbuddy/skills/all-platform-video-extract"
+log "  ✓ /root/.workbuddy/skills/{ExtractVideoSkill,greenvideo-extract,all-platform-video-extract} symlink 已刷新"
 
 # ── 2) buddy-skill 同步 ─────────────────────────────────────
 log "[2/2] 同步 buddy-skill → $BUDDY_SKILL_DST"
