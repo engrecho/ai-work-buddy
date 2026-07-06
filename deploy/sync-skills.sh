@@ -39,6 +39,11 @@ log() {
 
 log "========== 同步 Skills =========="
 
+# ── Git 代理配置（国内服务器访问 GitHub） ─────────────────────
+# 让所有 https://github.com/ 的请求自动走 gh-proxy.com 代理
+git config --global url."https://gh-proxy.com/https://github.com/".insteadOf "https://github.com/" 2>/dev/null
+log "git 全局代理: github.com → gh-proxy.com"
+
 # 确保目标目录存在
 mkdir -p "$SKILLS_DIR"
 mkdir -p "$GIT_MIRROR_DIR"
