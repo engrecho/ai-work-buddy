@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import {
   pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS, PUBLIC_TABLES
@@ -961,6 +962,84 @@ app.get('/api/v1/task-groups', apiKeyAuth, async (req, res) => {
 // 获取当前用户信息（验证 API Key 用）
 app.get('/api/v1/me', apiKeyAuth, async (req, res) => {
   res.json({ data: req.user, error: null });
+});
+
+// ══════════════════════════════════════════════════════════════
+// SKILL API：加密备忘追加（油猴脚本 / 外部工具调用）
+// 客户端 AES-256-CBC 加密 → 服务端解密 → 追加到指定标题的备忘
+// ══════════════════════════════════════════════════════════════
+
+const MEMO_ENCRYPTION_KEY = process.env.MEMO_ENCRYPTION_KEY || 'ai-buddy-memo-secret-2026';
+
+// AES-256-CBC 解密
+// 密文格式：base64(IV[16字节] + ciphertext)
+function decryptMemo(encryptedBase64) {
+  const raw = Buffer.from(encryptedBase64, 'base64');
+  const iv = raw.subarray(0, 16);
+  const ciphertext = raw.subarray(16);
+  const key = crypto.createHash('sha256').update(MEMO_ENCRYPTION_KEY).digest();
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  let decrypted = decipher.update(ciphertext);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString('utf8');
+}
+
+app.post('/api/v1/memos/append-encrypted', apiKeyAuth, async (req, res) => {
+  const { encrypted, target_title } = req.body || {};
+  if (!encrypted) {
+    return res.json({ data: null, error: { message: '缺少 encrypted 字段' } });
+  }
+
+  let plaintext;
+  try {
+    plaintext = decryptMemo(encrypted);
+  } catch (err) {
+    return res.json({ data: null, error: { message: '解密失败：' + err.message } });
+  }
+
+  if (!plaintext.trim()) {
+    return res.json({ data: null, error: { message: '解密后内容为空' } });
+  }
+
+  const memoTitle = (target_title || '未准入加盟商').trim();
+
+  try {
+    // 查找同名备忘（未删除）
+    const [rows] = await pool.query(
+      'SELECT * FROM memos WHERE user_id = ? AND title = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1',
+      [req.user.id, memoTitle]
+    );
+
+    const now = new Date();
+    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const appendBlock = `\n\n--- ${ts} ---\n${plaintext.trim()}\n`;
+
+    if (rows.length > 0) {
+      // 追加到现有备忘
+      const memo = rows[0];
+      const newContent = (memo.content || '') + appendBlock;
+      await pool.query(
+        'UPDATE memos SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+        [newContent, memo.id, req.user.id]
+      );
+      res.json({
+        data: { id: memo.id, title: memoTitle, action: 'appended', length: newContent.length },
+        error: null,
+      });
+    } else {
+      // 创建新备忘
+      const [result] = await pool.query(
+        'INSERT INTO memos (user_id, title, content, memo_type) VALUES (?, ?, ?, ?)',
+        [req.user.id, memoTitle, appendBlock.trimStart(), 'note']
+      );
+      res.json({
+        data: { id: result.insertId, title: memoTitle, action: 'created', length: appendBlock.length },
+        error: null,
+      });
+    }
+  } catch (err) {
+    res.json({ data: null, error: { message: err.message } });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════
