@@ -11,7 +11,30 @@
     <meta name="theme-color" content="#bbea3b" />
     <meta name="format-detection" content="telephone=no" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="app-version" content="v2026-07-07-r3" />
     <title>AI-Buddy</title>
+    <script>
+      // ── iOS PWA / WebClip 强缓存兜底 ──────────────────────
+      // 服务器已配 no-cache,但 iOS WebClip 偶尔还会用本地缓存的 index.html
+      // (旧 hash 文件名 → 404 → app 不能跑)。
+      // 思路:每次部署 bumped build.version,客户端检测到不匹配则 reload。
+      (function () {
+        var META = document.querySelector('meta[name="app-version"]');
+        var CURRENT = META ? META.getAttribute('content') : 'unknown';
+        try {
+          var SEEN = localStorage.getItem('buddy_app_version');
+          if (SEEN && SEEN !== CURRENT) {
+            // 版本变化:清掉老 hash 引用 + 强刷一次
+            try { localStorage.setItem('buddy_app_version', CURRENT); } catch (_) {}
+            var u = new URL(location.href);
+            u.searchParams.set('_v', Date.now());
+            location.replace(u.toString());
+            return;
+          }
+          if (!SEEN) localStorage.setItem('buddy_app_version', CURRENT);
+        } catch (_) { /* localStorage 不可用就直接进 */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
