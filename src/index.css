@@ -74,6 +74,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* 防止移动端页面被某元素撑出水平滚动条
+     (iOS WebClip 尤其敏感:任何 overflow-x:visible 都会引起左右晃动) */
+  html, body, #root {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════

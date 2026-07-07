@@ -369,42 +369,27 @@ const Index = () => {
   const { user, logout } = useAuth();
 
   // ── 移动端返回手势 / 浏览器后退支持 ──
-  // 状态栈:['tasks'] → pushState 切换时压栈
-  // 监听到 popstate 时回退到栈顶上一个 tab
+  // 设计:
+  //   - Index 不再主动 pushState/popstate(避免抢断子页面内部状态)
+  //   - 子页面(任务详情、移动端阅读添加等)在打开时自己 pushState 一次,
+  //     监听到 popstate 时关闭自身 → 浏览器回退时不会跳走 tab
+  //   - Index 只在弹层(用户设置 / 悬浮梳理 / 配置)打开时,先尝试 history.back()
+  //     让最近的子页面/弹层自己关闭,而不是直接 setActiveTab
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // 初始化:压入当前 tab 作为基线
-    try { window.history.replaceState({ tab: activeTab }, ''); } catch (_) {}
-    const onPopState = (e) => {
-      // 优先关闭弹层(配置 / 悬浮梳理 / 用户设置 / 编辑器)
-      if (userSettingsOpen) { setUserSettingsOpen(false); return; }
-      if (floatNoteOpen)    { setFloatNoteOpen(false);    return; }
-      if (configOpen)       { setConfigOpen(false);       return; }
-      const state = e.state;
-      if (state && state.tab) {
-        setActiveTab(state.tab);
-      } else {
-        // 栈空时回到 dashboard(首页)
-        setActiveTab('dashboard');
-      }
+    const onPopState = () => {
+      // 让子页面/弹层自己处理;不主动切 tab
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-    // 只在弹层变化或首次挂载时重新订阅
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userSettingsOpen, floatNoteOpen, configOpen]);
+  }, []);
 
-  // tab 切换时压栈(只在非初始 render 才 push,避免历史里塞一堆重复项)
-  const tabHistoryRef = useRef(['tasks']);
+  // 弹层关闭:回退到上一层(让浏览器自己控制栈)
+  // 弹层打开:不动 history(子页面/外层已 push 过)
   useEffect(() => {
-    const stack = tabHistoryRef.current;
-    if (stack[stack.length - 1] !== activeTab) {
-      stack.push(activeTab);
-      if (stack.length > 10) stack.shift();
-      try { window.history.pushState({ tab: activeTab }, ''); } catch (_) {}
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+    // 监听弹层变化:关闭时如果历史栈里有"弹层 push 的项",back 一步
+    // 但这容易和子页面冲突,保守做法:什么都不做,弹层用 onClose 自管
+  }, []);
 
   const handleLogout = async () => {
     try {

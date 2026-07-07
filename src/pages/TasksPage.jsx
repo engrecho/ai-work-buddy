@@ -4017,6 +4017,22 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
   const hasVisibleTasks = topLevelTasks.length > 0;
   const getSubTasks = (parentId) => filteredTasks.filter((t) => t.parent_id === parentId);
   const mobileDetailVisible = selectedTask || isCreating;
+
+  // 移动端:打开详情/新建时 pushState,关闭时 back 一步
+  // 监听到 popstate 时关闭自身,避免浏览器返回手势时把整个任务页切走
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (mobileDetailVisible) {
+      // 推一个标记,让浏览器左滑/后退能回到任务列表
+      try { window.history.pushState({ buddyMobileSubpage: 'task' }, ''); } catch (_) {}
+      const onPop = () => {
+        if (selectedTask) setSelectedTask(null);
+        if (isCreating) setIsCreating(false);
+      };
+      window.addEventListener('popstate', onPop);
+      return () => window.removeEventListener('popstate', onPop);
+    }
+  }, [mobileDetailVisible, selectedTask, isCreating]);
   const updateTaskGroupAssignment = (taskId, groupId) => {
     // group_id 已写入数据库，此处仅同步本地 state（乐观更新）
     setTasks((curr) =>
