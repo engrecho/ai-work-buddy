@@ -1,49 +1,25 @@
 // 社媒内容解析与下载服务
-// 封装 ExtractVideoSkill(独立 SKILL)scripts/ 下的两个脚本：
-//   - video_extract.cjs --json    解析分享文本/URL，返回 {title, host, vid, items, ...}
-//   - download_videos.cjs              解析 + 下载所有资源到本地目录
+// 解析/下载脚本由 buddy-skill 自包含(项目内置,不再依赖外部 ExtractVideoSkill):
+//   - buddy-skill/scripts/video_extract.cjs --json   解析分享文本/URL
+//   - buddy-skill/scripts/download_videos.cjs        解析 + 下载所有资源到本地目录
 //
 // 注意：所有 spawn 都加 90s 超时；解析失败要原样返回错误，不要吞。
 //
 // 默认保存地址优先级：
-//   1) 用户级 user_settings(offline_output_root,需登录)
-//   2) 环境变量 GV_OUTPUT
-//   3) 项目内 data/offline/
+//   1) 环境变量 GV_OUTPUT
+//   2) 项目内 data/offline/
 
 import { execFile, spawn } from 'child_process';
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 技能目录:按优先级自动探测,找到第一个含 scripts/video_extract.cjs 的目录
-//   1) 环境变量 GV_SKILL_DIR
-//   2) ~/.all-platform-video-extract           (ExtractVideoSkill 默认)
-//   3) ~/.openclaw/workspace/skills/ExtractVideoSkill  (服务器 Openclaw 部署位置)
-//   4) ~/.workbuddy/skills/all-platform-video-extract  (旧软链接,兼容历史)
-//   5) ~/.workbuddy/skills/greenvideo-extract           (更早的软链接,兼容历史)
-function resolveSkillDir() {
-  const home = os.homedir();
-  const candidates = [
-    process.env.GV_SKILL_DIR,
-    path.join(home, '.all-platform-video-extract'),
-    path.join(home, '.openclaw', 'workspace', 'skills', 'ExtractVideoSkill'),
-    path.join(home, '.workbuddy', 'skills', 'all-platform-video-extract'),
-    path.join(home, '.workbuddy', 'skills', 'greenvideo-extract'),
-  ].filter(Boolean);
-  for (const dir of candidates) {
-    if (fs.existsSync(path.join(dir, 'scripts', 'video_extract.cjs'))) {
-      return dir;
-    }
-  }
-  // 都没找到:返回第一个候选(让后续报错信息能显示)
-  return candidates[0] || candidates[1];
-}
-
-const SKILL_DIR = resolveSkillDir();
+// 脚本目录:buddy-skill 自包含(相对于 server/ 上一级的 buddy-skill/scripts/)
+const BUDDY_SKILL_DIR = path.resolve(__dirname, '..', 'buddy-skill');
+const BUDDY_SKILL_SCRIPTS = path.join(BUDDY_SKILL_DIR, 'scripts');
 
 // Node 运行时：默认用当前进程自己的 Node（process.execPath），保证跨平台一致
 // 用户可通过环境变量 GV_NODE 强制覆盖
@@ -52,8 +28,8 @@ const NODE_BIN = process.env.GV_NODE || process.execPath;
 // 输出根目录(默认):<项目根>/data/offline
 const DEFAULT_OUTPUT_ROOT = path.resolve(__dirname, '..', 'data', 'offline');
 
-const EXTRACT_SCRIPT = path.join(SKILL_DIR, 'scripts', 'video_extract.cjs');
-const DOWNLOAD_SCRIPT = path.join(SKILL_DIR, 'scripts', 'download_videos.cjs');
+const EXTRACT_SCRIPT = path.join(BUDDY_SKILL_SCRIPTS, 'video_extract.cjs');
+const DOWNLOAD_SCRIPT = path.join(BUDDY_SKILL_SCRIPTS, 'download_videos.cjs');
 
 const SPAWN_TIMEOUT_MS = 90 * 1000; // 90s
 
@@ -187,7 +163,7 @@ export async function parseShare(input) {
   if (!fs.existsSync(EXTRACT_SCRIPT)) {
     return {
       code: 500,
-      message: `未找到 extract 脚本：${EXTRACT_SCRIPT}。请确认已安装 ExtractVideoSkill(默认位置 ${SKILL_DIR})。`,
+      message: `未找到 extract 脚本：${EXTRACT_SCRIPT}。请确认 buddy-skill/scripts/ 下已内置 video_extract.cjs。`,
     };
   }
 
