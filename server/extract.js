@@ -19,10 +19,31 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 技能目录：优先用环境变量；找不到则用默认 ~/.all-platform-video-extract
-const SKILL_DIR =
-  process.env.GV_SKILL_DIR ||
-  path.join(os.homedir(), '.all-platform-video-extract');
+// 技能目录:按优先级自动探测,找到第一个含 scripts/video_extract.cjs 的目录
+//   1) 环境变量 GV_SKILL_DIR
+//   2) ~/.all-platform-video-extract           (ExtractVideoSkill 默认)
+//   3) ~/.openclaw/workspace/skills/ExtractVideoSkill  (服务器 Openclaw 部署位置)
+//   4) ~/.workbuddy/skills/all-platform-video-extract  (旧软链接,兼容历史)
+//   5) ~/.workbuddy/skills/greenvideo-extract           (更早的软链接,兼容历史)
+function resolveSkillDir() {
+  const home = os.homedir();
+  const candidates = [
+    process.env.GV_SKILL_DIR,
+    path.join(home, '.all-platform-video-extract'),
+    path.join(home, '.openclaw', 'workspace', 'skills', 'ExtractVideoSkill'),
+    path.join(home, '.workbuddy', 'skills', 'all-platform-video-extract'),
+    path.join(home, '.workbuddy', 'skills', 'greenvideo-extract'),
+  ].filter(Boolean);
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, 'scripts', 'video_extract.cjs'))) {
+      return dir;
+    }
+  }
+  // 都没找到:返回第一个候选(让后续报错信息能显示)
+  return candidates[0] || candidates[1];
+}
+
+const SKILL_DIR = resolveSkillDir();
 
 // Node 运行时：默认用当前进程自己的 Node（process.execPath），保证跨平台一致
 // 用户可通过环境变量 GV_NODE 强制覆盖
