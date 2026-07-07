@@ -643,3 +643,12 @@
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+/* ═══════════════════════════════════════════════════════════
+   iOS 输入框聚焦防自动放大
+   iOS Safari/WebClip: input 元素 font-size < 16px 时聚焦会
+   强制放大整个 viewport(即使设置了 user-scalable=no 也会),
+   缩回时页面会"跳"动。全局保证 16px+ 阻止此行为。
+   ═══════════════════════════════════════════════════════════ */
+input, textarea, select, [contenteditable="true"] {
+  font-size: 16px !important;
+}

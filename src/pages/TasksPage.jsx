@@ -835,8 +835,10 @@ const [groupAutoMatched, setGroupAutoMatched] = useState(false);
         e.preventDefault();
         onSave(form);
       }}
-      className='space-y-3'
+      className='flex flex-col flex-1 min-h-0'
     >
+      {/* 滚动内容区(除底部按钮外) */}
+      <div className='flex-1 overflow-y-auto space-y-3 px-4 md:px-6 py-4 md:py-5 min-h-0'>
       {/* ── 标题 + 分组 + 标签：紧凑区块 ─────────────────────────── */}
       <div>
         <label className='text-xs text-gray-400 mb-0.5 block'>标题 *</label>
@@ -1161,7 +1163,9 @@ const [groupAutoMatched, setGroupAutoMatched] = useState(false);
           placeholder='任务描述...'
         />
       </div>
-      <div className='flex gap-2 pt-1'>
+      </div>
+      {/* 底部固定操作栏(永远在底部,不被 nav 遮挡) */}
+      <div className='flex-shrink-0 flex gap-2 px-4 md:px-6 py-3 border-t border-gray-100 bg-white pb-safe'>
         <Button type='button' variant='outline' onClick={onCancel} className='flex-1 h-10'>
           取消
         </Button>
@@ -4221,8 +4225,9 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
         )}
         <button
           onClick={() => setIsCreating(true)}
-          className='fixed bottom-20 right-4 w-11 h-11 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all z-20'
+          className='fixed right-4 w-11 h-11 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all z-20'
           style={{
+            bottom: 'calc(56px + env(safe-area-inset-bottom, 0px) + 12px)',
             backgroundColor: '#bbea3b',
             color: '#2d4a00',
           }}
