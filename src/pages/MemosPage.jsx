@@ -628,8 +628,24 @@ function MobileViewInline({ memo, groups, tags, tasks, groupMap, tagMap, onGoToT
           <TagSelector form={fakeForm} setForm={fakeSetFormTags} tags={tags} onTagCreated={onTagCreated} />
         </div>
       </div>
+      {/* 关联任务 */}
+      <RelatedTasksEditor
+        relatedTaskIds={memo.related_task_ids || []}
+        tasks={tasks}
+        onGoToTask={onGoToTask}
+        onSave={(ids) => onFieldSave({ related_task_ids: ids })}
+      />
+      {/* 关联链接 */}
+      {memo.related_url && (
+        <div className='flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100'>
+          <Link2 className='h-3.5 w-3.5 text-gray-400 flex-shrink-0' />
+          <a href={memo.related_url} target='_blank' rel='noopener noreferrer' className='text-xs text-blue-500 truncate flex-1'>
+            {memo.related_url}
+          </a>
+        </div>
+      )}
       {/* 内容 */}
-      <div>
+      <div className='flex-1 flex flex-col min-h-0'>
         <div className='flex items-center justify-between mb-1'>
           <span className='text-xs font-medium text-gray-400'>内容</span>
           {contentEditing ? (
@@ -669,24 +685,10 @@ function MobileViewInline({ memo, groups, tags, tasks, groupMap, tagMap, onGoToT
             </button>
           )}
         </div>
-        <RichEditor key={`${memo.id}-${contentEditing ? 'edit' : 'view'}-mobile`} value={contentVal} onChange={(val) => setContentVal(val)} placeholder='写下备忘内容…' readOnly={!contentEditing} />
-      </div>
-      {/* 关联任务 */}
-      <RelatedTasksEditor
-        relatedTaskIds={memo.related_task_ids || []}
-        tasks={tasks}
-        onGoToTask={onGoToTask}
-        onSave={(ids) => onFieldSave({ related_task_ids: ids })}
-      />
-      {/* 关联链接 */}
-      {memo.related_url && (
-        <div className='flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100'>
-          <Link2 className='h-3.5 w-3.5 text-gray-400 flex-shrink-0' />
-          <a href={memo.related_url} target='_blank' rel='noopener noreferrer' className='text-xs text-blue-500 truncate flex-1'>
-            {memo.related_url}
-          </a>
+        <div className='flex-1 min-h-[200px]'>
+          <RichEditor key={`${memo.id}-${contentEditing ? 'edit' : 'view'}-mobile`} value={contentVal} onChange={(val) => setContentVal(val)} placeholder='写下备忘内容…' readOnly={!contentEditing} />
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -725,20 +727,6 @@ function MemoEditForm({ form, setForm, groups, tags, tasks, panelMode, onCancel,
             <TagSelector form={form} setForm={setForm} tags={tags} />
           </div>
         </div>
-        {/* 富文本内容 */}
-        <div>
-          <label className='text-xs font-medium text-gray-500 mb-1.5 block'>内容</label>
-          <RichEditor
-            value={form.content}
-            onChange={(val) =>
-              setForm((p) => ({
-                ...p,
-                content: val,
-              }))
-            }
-            placeholder='写下备忘内容...'
-          />
-        </div>
         {/* 关联任务 */}
         <div>
           <label className='text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1'>
@@ -752,6 +740,22 @@ function MemoEditForm({ form, setForm, groups, tags, tasks, panelMode, onCancel,
             <Link2 className='h-3 w-3' /> 关联链接（可选）
           </label>
           <LinkSection form={form} setForm={setForm} />
+        </div>
+        {/* 富文本内容 */}
+        <div className='flex-1 flex flex-col min-h-0'>
+          <label className='text-xs font-medium text-gray-500 mb-1.5 block'>内容</label>
+          <div className='flex-1 min-h-[200px]'>
+            <RichEditor
+              value={form.content}
+              onChange={(val) =>
+                setForm((p) => ({
+                  ...p,
+                  content: val,
+                }))
+              }
+              placeholder='写下备忘内容...'
+            />
+          </div>
         </div>
         <div className='h-2' />
       </div>
@@ -1125,7 +1129,7 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
         />
 
         {/* 正文 */}
-        <div>
+        <div className='flex-1 flex flex-col min-h-0'>
           <div className='flex items-center justify-between mb-1.5'>
             <span className='text-xs font-medium text-gray-400'>内容</span>
             {contentEditing ? (
@@ -1153,7 +1157,9 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
               </button>
             )}
           </div>
-          <RichEditor key={`${memo.id}-${contentEditing ? 'edit' : 'view'}`} value={contentVal} onChange={(val) => setContentVal(val)} placeholder='写下备忘内容…' readOnly={!contentEditing} />
+          <div className='flex-1 min-h-[200px]'>
+            <RichEditor key={`${memo.id}-${contentEditing ? 'edit' : 'view'}`} value={contentVal} onChange={(val) => setContentVal(val)} placeholder='写下备忘内容…' readOnly={!contentEditing} />
+          </div>
         </div>
       </div>
     </div>

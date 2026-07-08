@@ -23,9 +23,9 @@ import {
 
 // ─── 平台图标 / 颜色映射 ──────────────────────────────────────
 const PLATFORM_META = {
-  douyin:       { label: '抖音',     color: '#fe2c55', Icon: PlayCircle },
-  bilibili:     { label: 'B站',      color: '#fb7299', Icon: PlayCircle },
-  xiaohongshu:  { label: '小红书',   color: '#ff2442', Icon: FileText },
+  douyin:       { label: '抖音',     color: '#FF0050', Icon: PlayCircle },
+  bilibili:     { label: 'B站',      color: '#FF6699', Icon: PlayCircle },
+  xiaohongshu:  { label: '小红书',   color: '#FF2442', Icon: FileText },
   wechat:       { label: '公众号',   color: '#07c160', Icon: FileText },
   youtube:      { label: 'YouTube',  color: '#ff0000', Icon: PlayCircle },
   tiktok:       { label: 'TikTok',   color: '#010101', Icon: PlayCircle },
@@ -283,31 +283,39 @@ const ReadingPage = () => {
     try {
       let insertData = { id: genId(), ...form };
 
-      // 如果勾选"离线到本地"，先调 download 接口拿到 offline_path
-      if (form.is_offline && (form.url || shareInput)) {
-        const res = await fetch('/api/extract/download', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ input: form.url || shareInput }),
-        });
-        const json = await res.json();
-        if (json.error) {
-          throw new Error(json.error.message || '离线下载失败');
-        }
-        if (json.data?.code === 200) {
-          insertData.is_offline = true;
-          insertData.offline_path = json.data.offline_path || null;
-        } else {
-          // 下载失败但仍可入阅读列表
-          insertData.is_offline = false;
-        }
-      }
+      // 先保存基本信息（非离线）到数据库
+      const { error: insertErr } = await supabase.from("reading_items").insert([insertData]);
+      if (insertErr) throw insertErr;
 
-      await supabase.from("reading_items").insert([insertData]);
       fetchItems();
       setIsAddOpen(false);
       resetForm();
+
+      // 如果勾选"将链接离线保存"，异步开始离线处理
+      if (form.is_offline && (form.url || shareInput)) {
+        toast.info("正在后台离线保存…（可正常关闭页面）");
+        try {
+          const res = await fetch('/api/extract/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ input: form.url || shareInput }),
+          });
+          const json = await res.json();
+          if (json.data?.code === 200) {
+            await supabase.from("reading_items").update({
+              is_offline: true,
+              offline_path: json.data.offline_path || null,
+            }).eq("id", insertData.id);
+            fetchItems();
+            toast.success("离线保存完成！");
+          } else {
+            toast.error(`离线保存失败：${json.data?.message || '未知错误'}`);
+          }
+        } catch (e) {
+          toast.error(`离线保存失败：${e.message}`);
+        }
+      }
     } catch (e) {
       setExtractError(`保存失败：${e.message}`);
     } finally {
@@ -360,6 +368,18 @@ const ReadingPage = () => {
     } catch (e) {
       setItems(snapshot);
       toast.error("删除失败");
+    }
+  };
+
+  // 去除离线
+  const handleRemoveOffline = async (item) => {
+    setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_offline: false, offline_path: null } : it));
+    try {
+      await supabase.from("reading_items").update({ is_offline: false, offline_path: null }).eq("id", item.id);
+      toast.success("已去除离线保存");
+    } catch (e) {
+      setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_offline: item.is_offline, offline_path: item.offline_path } : it));
+      toast.error("操作失败");
     }
   };
 
@@ -586,6 +606,7 @@ const ReadingPage = () => {
       <div className="flex-1 overflow-y-auto bg-[#f5f5f5] min-w-0">
         <div className="w-full max-w-[1200px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 md:py-5">
 
+          {/* 顶部操作栏：平台过滤器 + 添加按钮（PC端在右上方） */}
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <button
               className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 flex-shrink-0"
@@ -660,19 +681,21 @@ const ReadingPage = () => {
                 );
               })}
             </div>
-          </div>
 
-          {/* 悬浮添加按钮(FAB) - 右下角固定,始终可见可点 */}
-          <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) resetForm(); }}>
-            <DialogTrigger asChild>
-              <button
-                aria-label="添加文章"
-                className="fixed z-30 right-4 bottom-[calc(56px+env(safe-area-inset-bottom,0px)+16px)] md:bottom-6 md:right-6 flex items-center justify-center h-14 w-14 rounded-full shadow-xl border-0 active:scale-95 transition-transform"
-                style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}
-              >
-                <Plus className="h-6 w-6" />
-              </button>
-            </DialogTrigger>
+            {/* PC端：添加文章按钮在右上方，移动端：右下角FAB */}
+            <div className="ml-auto flex-shrink-0">
+              <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) resetForm(); }}>
+                <DialogTrigger asChild>
+                  <button
+                    aria-label="添加文章"
+                    className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium border-0 active:scale-95 transition-transform"
+                    style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    添加文章
+                  </button>
+                </DialogTrigger>
+                {/* Dialog content moved below */}
               <DialogContent className="w-full max-w-2xl mx-auto sm:rounded-xl rounded-none sm:max-h-[90dvh] max-h-[100dvh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>添加文章</DialogTitle>
@@ -786,21 +809,21 @@ const ReadingPage = () => {
                           onChange={(e) => setForm({ ...form, is_offline: e.target.checked })}
                           className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 flex items-center gap-1">
-                            <Download className="h-3.5 w-3.5" />
-                            离线到本地
-                          </div>
-                          <div className="text-xs text-gray-500 leading-snug">
-                            视频/图/文章 markdown 下载到服务端
-                          </div>
-                        </div>
-                      </label>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 flex items-center gap-1">
+                        <Download className="h-3.5 w-3.5" />
+                        将链接离线保存
+                      </div>
+                      <div className="text-xs text-gray-500 leading-snug">
+                        视频/图/文章 markdown 下载到服务端
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium">标签</label>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">标签</label>
                       <button
                         type="button"
                         onClick={handleReClassify}
@@ -835,7 +858,7 @@ const ReadingPage = () => {
                     <Button type="button" variant="outline" onClick={() => { setIsAddOpen(false); resetForm(); }}>取消</Button>
                     <Button type="submit" className="border-0" style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }} disabled={fetching || classifying || extracting || downloading}>
                       {(fetching || classifying || extracting || downloading) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                      {form.is_offline ? "下载并添加" : "添加"}
+                      添加
                     </Button>
                   </div>
                 </form>
@@ -869,6 +892,7 @@ const ReadingPage = () => {
                 onEdit={() => handleStartEdit(item)}
                 onCopy={() => handleCopyUrl(item)}
                 onOpenFiles={() => openOfflineFiles(item)}
+                onRemoveOffline={() => handleRemoveOffline(item)}
               />
             ))}
           </div>
@@ -906,6 +930,16 @@ const ReadingPage = () => {
             </div>
           )}
         </div>
+
+        {/* 移动端：右下角悬浮添加按钮(FAB) — 复用顶部栏的 Dialog */}
+        <button
+          aria-label="添加文章"
+          className="md:hidden fixed z-30 right-4 bottom-[calc(56px+env(safe-area-inset-bottom,0px)+16px)] flex items-center justify-center h-14 w-14 rounded-full shadow-xl border-0 active:scale-95 transition-transform"
+          style={{ backgroundColor: "#bbea3b", color: "#2d4a00" }}
+          onClick={() => { setIsAddOpen(true); }}
+        >
+          <Plus className="h-6 w-6" />
+        </button>
       </div>
 
       {/* 复制反馈 toast（右下角浮动） */}
@@ -1005,27 +1039,100 @@ const ReadingPage = () => {
                 </label>
               </div>
               <div>
-                <label className="text-sm font-medium mb-1.5 block">离线路径（仅查看/修改）</label>
-                <Input
-                  value={editForm.offline_path}
-                  onChange={(e) => setEditForm({ ...editForm, offline_path: e.target.value })}
-                  placeholder="/www/wwwroot/.../gv_downloads/<平台>-<vid>-<标题>"
-                  className="font-mono text-xs"
-                />
+                <label className="text-sm font-medium mb-1.5 block">离线</label>
                 {editForm.is_offline ? (
-                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                    <Check className="h-3 w-3" />已离线，修改路径需自行保证真实存在
-                  </p>
+                  <div className="space-y-2">
+                    <div className="text-xs text-green-600 flex items-center gap-1">
+                      <Check className="h-3 w-3" />已离线保存
+                    </div>
+                    <div className="text-xs text-gray-500 font-mono bg-gray-50 px-3 py-2 rounded break-all">
+                      {editForm.offline_path || "（无路径信息）"}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSavingEdit(true);
+                          try {
+                            await supabase
+                              .from("reading_items")
+                              .update({ is_offline: false, offline_path: null })
+                              .eq("id", editingItem.id);
+                            setEditForm(prev => ({ ...prev, is_offline: false, offline_path: "" }));
+                            setItems(prev => prev.map(it => it.id === editingItem.id ? { ...it, is_offline: false, offline_path: null } : it));
+                          } catch (e) { alert(`操作失败：${e.message}`); }
+                          setSavingEdit(false);
+                        }}
+                        disabled={savingEdit}
+                        className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1"
+                      >
+                        <Trash2 className="h-3 w-3" /> 去除离线
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSavingEdit(true);
+                          try {
+                            const res = await fetch("/api/extract/redownload", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              credentials: "include",
+                              body: JSON.stringify({ input: editingItem.url }),
+                            });
+                            const json = await res.json();
+                            if (json.error) throw new Error(json.error.message);
+                            if (json.data?.code === 200) {
+                              setEditForm(prev => ({ ...prev, is_offline: true, offline_path: json.data.offline_path }));
+                              setItems(prev => prev.map(it => it.id === editingItem.id ? { ...it, is_offline: true, offline_path: json.data.offline_path } : it));
+                            }
+                          } catch (e) { alert(`重新下载失败：${e.message}`); }
+                          setSavingEdit(false);
+                        }}
+                        disabled={savingEdit}
+                        className="text-xs px-2.5 py-1 rounded border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex items-center gap-1"
+                      >
+                        <RefreshCw className="h-3 w-3" /> 重新下载
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  <label className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_offline}
-                      onChange={(e) => setEditForm({ ...editForm, is_offline: e.target.checked })}
-                      className="h-3.5 w-3.5 rounded border-gray-300"
-                    />
-                    标记为已离线
-                  </label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSavingEdit(true);
+                      try {
+                        const res = await fetch('/api/extract/download', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ input: editingItem.url }),
+                        });
+                        const json = await res.json();
+                        if (json.error) throw new Error(json.error.message);
+                        if (json.data?.code === 200) {
+                          setEditForm(prev => ({ ...prev, is_offline: true, offline_path: json.data.offline_path }));
+                          setItems(prev => prev.map(it => it.id === editingItem.id ? { ...it, is_offline: true, offline_path: json.data.offline_path } : it));
+                        } else {
+                          throw new Error(json.data?.message || '离线下载失败');
+                        }
+                      } catch (e) { alert(`离线保存失败：${e.message}`); }
+                      setSavingEdit(false);
+                    }}
+                    disabled={savingEdit}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-sm w-full justify-center"
+                  >
+                    {savingEdit ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        正在离线保存到服务端…（可关闭页面，不影响后台处理）
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        将链接离线保存
+                      </>
+                    )}
+                  </button>
                 )}
               </div>
               <div>
@@ -1203,7 +1310,7 @@ function SideItem({ active, onClick, label, count, icon, color }) {
 
 // ── 子组件：文章列表行(列表式展示,头图缩略图在左侧) ──────────────────
 // 布局: 头图(64×44 / 80×56)  |  标题(2行) + 摘要(4行)        |  元信息 + 操作(1行底部)
-function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles }) {
+function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit, onCopy, onOpenFiles, onRemoveOffline }) {
   const pm = platformMeta(item.platform);
   const PlatformIcon = pm.Icon;
   return (
@@ -1211,7 +1318,6 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
       className={`
         group flex gap-3 px-3 py-3 sm:px-4 sm:py-3.5
         hover:bg-gray-50 active:bg-gray-100 transition-colors
-        ${item.is_read ? "opacity-60" : ""}
       `}
     >
       {/* 头图缩略图(64×44 移动端,80×56 PC 端) */}
@@ -1265,7 +1371,7 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
             target="_blank"
             rel="noopener noreferrer"
             className={`flex-1 min-w-0 font-semibold text-[15px] leading-snug line-clamp-2 hover:underline ${
-              item.is_read ? "text-gray-400 line-through decoration-gray-300" : "text-gray-900"
+              item.is_read ? "text-blue-600" : "text-gray-900"
             }`}
           >
             {item.title}
@@ -1300,7 +1406,7 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
             {pm.label}
           </span>
           {item.is_offline && (
-            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 flex-shrink-0">
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-600 flex-shrink-0 border border-green-200">
               <Download className="h-2.5 w-2.5" />
               已离线
             </span>
@@ -1349,6 +1455,15 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
                 title="查看/下载离线文件"
               >
                 <FolderOpen className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {item.is_offline && (
+              <button
+                onClick={onRemoveOffline}
+                className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 active:bg-red-100 transition-colors"
+                title="去除离线"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             )}
             <button

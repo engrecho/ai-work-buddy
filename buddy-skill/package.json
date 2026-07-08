@@ -1,6 +1,6 @@
 {
   "name": "buddy-skill",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "SKILL for AI-Buddy - interact with your tasks, memos, and reading list via API",
   "main": "index.js",
   "type": "module",
