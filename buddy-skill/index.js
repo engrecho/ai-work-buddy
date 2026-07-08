@@ -120,13 +120,13 @@ async function downloadAndExtract(url, targetDir) {
 }
 
 async function selfUpdateCheck() {
-  // 24 小时内只检查一次,避免每次运行都请求网络
+  // 1 小时内只检查一次,兼顾及时更新与避免频繁请求网络
   const cacheFile = path.join(os.homedir(), '.buddy_skill_update_check');
   const now = Date.now();
   try {
     if (fs.existsSync(cacheFile)) {
       const last = Number(fs.readFileSync(cacheFile, 'utf8'));
-      if (now - last < 24 * 3600 * 1000) return;
+      if (now - last < 3600 * 1000) return;
     }
   } catch { /* ignore */ }
   try {
@@ -141,7 +141,8 @@ async function selfUpdateCheck() {
 
     console.log(`发现 buddy-skill 新版本: ${VERSION} → ${remoteVersion}，正在自动更新...`);
     await downloadAndExtract(UPDATE_URL, __dirname);
-    console.log(`✓ 已更新到 ${remoteVersion}，请重新运行上一条命令`);
+    console.log(`✓ 已更新到 ${remoteVersion}。`);
+    console.log(`  若本次更新涉及 SKILL.md / prompts.js（触发词或离线下载规则变化），请在 Agent 中【重新加载本 skill 会话】以生效，然后重新运行上一条命令。`);
     process.exit(0);
   } catch (err) {
     if (process.env.DEBUG) console.error('[self-update]', err.message);
