@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import multer from 'multer';
 import { fileURLToPath } from 'url';
 import {
   pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS, PUBLIC_TABLES
@@ -13,7 +14,7 @@ import {
   authMiddleware, optionalAuthMiddleware, generateToken,
   setAuthCookie, clearAuthCookie, registerUser, loginUser, getCurrentUser,
   updateUserProfile, changePassword,
-  createApiKeyForUser, listApiKeysForUser, revokeApiKey, getUserByApiKey
+  createApiKeyForUser, listApiKeysForUser, revokeApiKey, revealApiKey, getUserByApiKey
 } from './auth.js';
 import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
@@ -30,6 +31,32 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
+
+// ── 头像静态服务（免鉴权，文件名含随机串不可枚举；低敏感资源） ──────────
+const AVATARS_DIR = path.join(__dirname, '..', 'uploads', 'avatars');
+fs.mkdirSync(AVATARS_DIR, { recursive: true });
+app.use('/api/avatars', express.static(AVATARS_DIR, {
+  maxAge: '7d',
+  setHeaders: (res) => { res.setHeader('Cache-Control', 'public, max-age=604800'); },
+}));
+
+// ── 头像上传 multer 配置 ──────────────────────────────────────────
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, AVATARS_DIR),
+    filename: (req, file, cb) => {
+      const ext = (file.originalname.split('.').pop() || 'png').toLowerCase();
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'png';
+      const rand = crypto.randomBytes(8).toString('hex');
+      cb(null, `${req.user.id}_${Date.now()}_${rand}.${safeExt}`);
+    },
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (req, file, cb) => {
+    const ok = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype);
+    cb(ok ? null : new Error('仅支持 jpg/png/webp/gif 图片'), ok);
+  },
+});
 
 // ── 公开端点（不需要登录）──────────────────────────────────
 
@@ -300,6 +327,19 @@ app.delete('/api/auth/api-keys/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// 反查 API Key 明文（仅新建格式可反查，旧格式 is_legacy 提示重建）
+app.get('/api/auth/api-keys/:id/reveal', authMiddleware, async (req, res) => {
+  try {
+    const result = await revealApiKey(req.user.id, parseInt(req.params.id, 10));
+    if (!result.ok) {
+      return res.json({ data: null, error: { message: result.message, code: result.code } });
+    }
+    return res.json({ data: { api_key: result.api_key, key_prefix: result.key_prefix }, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // 登录
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -344,6 +384,23 @@ app.patch('/api/auth/profile', authMiddleware, async (req, res) => {
     const { nickname, avatar_url } = req.body;
     const user = await updateUserProfile(req.user.id, { nickname, avatar_url });
     return res.json({ data: user, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 上传头像（需要登录）—— 文件存 uploads/avatars/，avatar_url 存为 /api/avatars/<filename>
+app.post('/api/auth/avatar', authMiddleware, (req, res, next) => {
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) return res.json({ data: null, error: { message: err.message || '上传失败' } });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) return res.json({ data: null, error: { message: '未收到文件' } });
+    const avatarUrl = `/api/avatars/${req.file.filename}`;
+    const user = await updateUserProfile(req.user.id, { avatar_url: avatarUrl });
+    return res.json({ data: { ...user, avatar_url: avatarUrl }, error: null });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }

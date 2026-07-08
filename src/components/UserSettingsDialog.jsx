@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { User, Camera, Lock, Save, LogOut, Key, Copy, Trash2, Plus, Eye, EyeOff, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { User, Camera, Lock, Save, LogOut, Key, Copy, Trash2, Plus, Eye, EyeOff, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -32,6 +32,8 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
   const [newlyCreated, setNewlyCreated] = useState(null);
   const [showKey, setShowKey] = useState(false);
   const [loadingKeys, setLoadingKeys] = useState(false);
+  const [revealedKey, setRevealedKey] = useState(null); // { id, api_key }
+  const [revealingId, setRevealingId] = useState(null); // 正在反查的 key id
 
   // 当切换到 API Key tab 时加载
   useEffect(() => {
@@ -50,6 +52,25 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
       console.error('加载 API Key 失败', err);
     } finally {
       setLoadingKeys(false);
+    }
+  };
+
+  // 反查明文（仅新建格式 is_legacy=0 可反查）
+  const handleRevealKey = async (k) => {
+    if (revealedKey?.id === k.id) { setRevealedKey(null); return; }
+    setRevealingId(k.id);
+    try {
+      const res = await fetch(`/api/auth/api-keys/${k.id}/reveal`, { credentials: 'include' });
+      const json = await res.json();
+      if (json.error) {
+        toast.error(json.error.message || '反查失败');
+      } else {
+        setRevealedKey({ id: k.id, api_key: json.data.api_key });
+      }
+    } catch (err) {
+      toast.error('反查失败：' + err.message);
+    } finally {
+      setRevealingId(null);
     }
   };
 
@@ -301,7 +322,7 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
                   请立即保存 API Key
                 </div>
                 <div className="text-xs text-amber-800">
-                  关闭后无法再次查看明文，如丢失请撤销后重新创建。
+                  请立即复制保存。之后也可在列表中点「眼睛」图标再次查看明文。
                 </div>
                 <div className="flex items-center gap-1">
                   <code className="flex-1 px-2 py-1.5 bg-white border border-amber-300 rounded text-xs font-mono break-all">
@@ -342,26 +363,53 @@ export function UserSettingsDialog({ trigger, open, onOpenChange }) {
             ) : (
               <div className="space-y-1.5 max-h-60 overflow-y-auto">
                 {apiKeys.map((k) => (
-                  <div key={k.id} className="flex items-center gap-2 px-2 py-1.5 border rounded text-sm">
-                    <Key className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-gray-900 truncate">{k.name}</span>
-                        {!k.is_active && <Badge variant="destructive" className="text-[10px] py-0">已撤销</Badge>}
-                        {k.is_active && k.last_used_at && (
-                          <Badge variant="outline" className="text-[10px] py-0 text-green-600 border-green-300">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />活跃
-                          </Badge>
-                        )}
+                  <div key={k.id} className="px-2 py-1.5 border rounded text-sm">
+                    <div className="flex items-center gap-2">
+                      <Key className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-gray-900 truncate">{k.name}</span>
+                          {!k.is_active && <Badge variant="destructive" className="text-[10px] py-0">已撤销</Badge>}
+                          {k.is_active && k.last_used_at && (
+                            <Badge variant="outline" className="text-[10px] py-0 text-green-600 border-green-300">
+                              <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />活跃
+                            </Badge>
+                          )}
+                          {k.is_legacy && k.is_active && (
+                            <Badge variant="outline" className="text-[10px] py-0 text-gray-500 border-gray-300">旧格式</Badge>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-gray-500 font-mono truncate">
+                          {k.key_prefix}...
+                        </div>
                       </div>
-                      <div className="text-[10px] text-gray-500 font-mono truncate">
-                        {k.key_prefix}...
-                      </div>
+                      {k.is_active && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleRevealKey(k)}
+                            disabled={!!revealingId || k.is_legacy}
+                            title={k.is_legacy ? '旧格式不可反查，请撤销重建' : (revealedKey?.id === k.id ? '隐藏明文' : '查看明文')}
+                            className="h-6 w-6 p-0 text-gray-500 hover:bg-gray-50"
+                          >
+                            {revealingId === k.id ? <Loader2 className="h-3 w-3 animate-spin" /> : (revealedKey?.id === k.id ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />)}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleRevokeKey(k.id, k.name)} className="h-6 w-6 p-0 text-red-500 hover:bg-red-50">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
+                      )}
                     </div>
-                    {k.is_active && (
-                      <Button size="sm" variant="ghost" onClick={() => handleRevokeKey(k.id, k.name)} className="h-6 w-6 p-0 text-red-500 hover:bg-red-50">
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                    {revealedKey?.id === k.id && (
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <code className="flex-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-mono break-all">
+                          {revealedKey.api_key}
+                        </code>
+                        <Button size="sm" variant="ghost" onClick={() => copyKey(revealedKey.api_key)} className="h-6 w-6 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
                     )}
                   </div>
                 ))}

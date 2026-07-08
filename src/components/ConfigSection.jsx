@@ -86,7 +86,7 @@ const KeywordsInput = ({ value = [], onChange }) => {
 };
 
 // ─── 人员管理面板 ─────────────────────────────────────────────────
-const MembersPanel = () => {
+export const MembersPanel = () => {
   const [members, setMembers] = useState([]);
   const [form, setForm] = useState({ mis: "", name: "" });
   const [editing, setEditing] = useState(null);
@@ -161,7 +161,7 @@ const MembersPanel = () => {
 };
 
 // ─── 标签管理面板 ─────────────────────────────────────────────────
-const TagsPanel = () => {
+export const TagsPanel = () => {
   const [tags, setTags] = useState([]);
   const [form, setForm] = useState({ name: "", color: PRESET_COLORS[0] });
   const [editing, setEditing] = useState(null);
@@ -225,7 +225,7 @@ const TagsPanel = () => {
 };
 
 // ─── 分组管理面板 ─────────────────────────────────────────────────
-const GroupsPanel = () => {
+export const GroupsPanel = () => {
   const [groups, setGroups] = useState([]);
   const [form, setForm] = useState({ name: "", color: PRESET_COLORS[2], keywords: [] });
   const [editing, setEditing] = useState(null);

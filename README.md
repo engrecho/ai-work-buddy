@@ -128,6 +128,10 @@ AI-buddy/
 - [x] 备忘录与梳理文档
 - [x] 阅读收藏与随记
 - [x] **AI-Buddy SKILL（buddy-skill）**：API Key + plan-then-confirm 安全流程
+- [x] **设置中心**：左下角头像入口 + 二级侧边栏，统一管理个人资料/密码/API Key/人员/标签/分组
+- [x] **头像上传**：取代 URL 填写，直接上传图片（jpg/png/webp，≤2MB）
+- [x] **API Key 反查明文**：新建 Key 加密存储，可在列表点「眼睛」再次查看明文（旧格式 Key 标记为 legacy，需撤销重建）
+- [x] **阅读页加载优化**：复合索引 + 列投影 + 加载骨架屏 + 乐观更新（消除操作后全量刷新闪烁）
 - [ ] 微信扫码登录
 - [ ] 多端数据同步（小程序）
 - [ ] 数据导入导出
@@ -148,7 +152,7 @@ AI-buddy/
 - **零依赖**：仅使用 Node.js 内置模块
 
 **快速开始**：
-1. 登录 AI-Buddy 网页 → 个人设置 → API Key Tab → 创建 Key（明文只显示一次！）
+1. 登录 AI-Buddy 网页 → 左下角头像 → 设置中心 → API Key → 创建 Key（明文创建时显示，之后也可点「眼睛」再次查看）
 2. `cp -r buddy-skill ~/tools/buddy-skill && cd ~/tools/buddy-skill`
 3. `node index.js init`，按提示输入 API Key
 4. `node index.js test` 验证连接

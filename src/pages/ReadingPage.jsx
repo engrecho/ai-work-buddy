@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { genId } from "@/lib/utils";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -150,6 +151,7 @@ const ReadingPage = () => {
   const [items, setItems] = useState([]);
   // 统一使用 task_tags 表
   const [tags, setTags] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [activeTag, setActiveTag] = useState("all");
   const [readFilter, setReadFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
@@ -177,8 +179,15 @@ const ReadingPage = () => {
 
   // ── 数据获取 ──────────────────────────────────────────────────────
   const fetchItems = async () => {
-    const { data } = await supabase.from("reading_items").select("*").is("deleted_at", null).order("created_at", { ascending: false });
+    setLoading(true);
+    const { data } = await supabase
+      .from("reading_items")
+      .select("id,url,platform,title,summary,cover_url,category,is_read,is_starred,is_offline,offline_path,tags,created_at,deleted_at")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(200);
     setItems(data || []);
+    setLoading(false);
   };
 
   // 统一从 task_tags 读取标签
@@ -318,23 +327,40 @@ const ReadingPage = () => {
   };
 
   const toggleRead = async (item) => {
-    await supabase.from("reading_items").update({ is_read: !item.is_read }).eq("id", item.id);
-    fetchItems();
+    // 乐观更新：先改本地，失败再回滚
+    setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_read: !it.is_read } : it));
+    try {
+      await supabase.from("reading_items").update({ is_read: !item.is_read }).eq("id", item.id);
+    } catch (e) {
+      setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_read: item.is_read } : it));
+      toast.error("更新失败");
+    }
   };
 
   const toggleStar = async (item) => {
-    await supabase.from("reading_items").update({ is_starred: !item.is_starred }).eq("id", item.id);
-    fetchItems();
+    setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_starred: !it.is_starred } : it));
+    try {
+      await supabase.from("reading_items").update({ is_starred: !item.is_starred }).eq("id", item.id);
+    } catch (e) {
+      setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, is_starred: item.is_starred } : it));
+      toast.error("更新失败");
+    }
   };
 
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const handleDelete = async (id) => {
     const now = new Date().toISOString();
-    // 软删除：只标记 deleted_at，不真正删除数据
-    await supabase.from("reading_items").update({ deleted_at: now }).eq("id", id);
+    // 乐观移除：先从列表剔除，失败再恢复
+    const snapshot = items;
+    setItems((prev) => prev.filter((it) => it.id !== id));
     setDeleteConfirmId(null);
-    fetchItems();
+    try {
+      await supabase.from("reading_items").update({ deleted_at: now }).eq("id", id);
+    } catch (e) {
+      setItems(snapshot);
+      toast.error("删除失败");
+    }
   };
 
   // ── 编辑 ────────────────────────────────────────────────────────
@@ -361,15 +387,19 @@ const ReadingPage = () => {
   const handleSaveEdit = async () => {
     if (!editingItem) return;
     setSavingEdit(true);
+    // 乐观更新本地
+    setItems((prev) => prev.map((it) => it.id === editingItem.id ? { ...it, ...editForm } : it));
+    const snapshotItem = editingItem;
+    setEditingItem(null);
     try {
       const { error } = await supabase
         .from("reading_items")
         .update(editForm)
-        .eq("id", editingItem.id);
+        .eq("id", snapshotItem.id);
       if (error) throw error;
-      setEditingItem(null);
-      fetchItems();
     } catch (e) {
+      // 回滚
+      setItems((prev) => prev.map((it) => it.id === snapshotItem.id ? { ...it, ...snapshotItem } : it));
       alert(`保存失败：${e.message}`);
     } finally {
       setSavingEdit(false);
@@ -813,6 +843,20 @@ const ReadingPage = () => {
             </Dialog>
 
           {/* 文章列表(列表式:头图缩略图 + 标题/摘要 + 右侧操作) */}
+          {loading && items.length === 0 ? (
+            <div className="flex flex-col divide-y divide-gray-100 bg-white rounded-xl border border-gray-100 overflow-hidden">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3 p-3">
+                  <div className="w-[68px] h-[68px] rounded-lg bg-gray-100 animate-pulse flex-shrink-0" />
+                  <div className="flex-1 min-w-0 flex flex-col gap-2 py-1">
+                    <div className="h-4 bg-gray-100 rounded animate-pulse w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded animate-pulse w-full" />
+                    <div className="h-3 bg-gray-100 rounded animate-pulse w-2/3" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="flex flex-col divide-y divide-gray-100 bg-white rounded-xl border border-gray-100 overflow-hidden">
             {filteredItems.map((item) => (
               <ArticleRow
@@ -828,6 +872,7 @@ const ReadingPage = () => {
               />
             ))}
           </div>
+          )}
 
           {/* 删除确认弹窗 */}
           <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
@@ -853,7 +898,7 @@ const ReadingPage = () => {
             </AlertDialogContent>
           </AlertDialog>
 
-          {filteredItems.length === 0 && (
+          {!loading && filteredItems.length === 0 && (
             <div className="bg-white rounded-xl border border-gray-100 p-10 md:p-16 text-center mt-2">
               <BookOpen className="h-10 w-10 md:h-12 md:w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-400 text-sm">暂无文章</p>

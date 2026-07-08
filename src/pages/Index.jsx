@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { LayoutDashboard, CheckSquare, FileText, BookOpen, Settings, NotebookPen, X, Minus, GripVertical, Maximize2, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2 } from 'lucide-react';
 import TasksPage from './TasksPage';
 import MemosPage from './MemosPage';
 import ReadingPage from './ReadingPage';
 import DashboardPage from './DashboardPage';
 import { ConfigContent } from '@/components/ConfigSection';
 import NoteView from '@/components/NoteView';
-import { UserSettingsDialog } from '@/components/UserSettingsDialog';
+import { SettingsCenter } from '@/pages/SettingsCenter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 
@@ -364,9 +364,10 @@ const Index = () => {
   const [pendingTaskId, setPendingTaskId] = useState(null);
   const [floatNoteOpen, setFloatNoteOpen] = useState(false);
   const [floatTasks, setFloatTasks] = useState([]);
-  const [userSettingsOpen, setUserSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState('profile');
 
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   // ── 移动端返回手势 / 浏览器后退支持 ──
   // 设计:
@@ -391,15 +392,14 @@ const Index = () => {
     // 但这容易和子页面冲突,保守做法:什么都不做,弹层用 onClose 自管
   }, []);
 
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {}
-    logout();
-  };
-
   const handleNavClick = (id) => {
     setActiveTab(id);
+    setConfigOpen(false);
+    setSettingsOpen(false);
+  };
+  const openSettings = (section = 'profile') => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
     setConfigOpen(false);
   };
   const handleGoToMemo = (memoId) => {
@@ -414,6 +414,14 @@ const Index = () => {
   };
 
   const renderPage = () => {
+    if (settingsOpen) {
+      return (
+        <SettingsCenter
+          onBack={() => setSettingsOpen(false)}
+          defaultSection={settingsSection}
+        />
+      );
+    }
     if (configOpen) {
       return (
         <div className='h-full overflow-y-auto bg-[#f5f5f5]'>
@@ -441,7 +449,8 @@ const Index = () => {
 
   return (
     <div className='flex flex-col h-screen-safe bg-[#f5f5f5] min-h-0'>
-      {/* ══ 移动端顶部标题栏(适配刘海屏) ══ */}
+      {/* ══ 移动端顶部标题栏(适配刘海屏；设置中心全屏时隐藏) ══ */}
+      {!settingsOpen && (
       <header
         className='md:hidden flex-shrink-0 bg-white flex items-center px-4 border-b border-gray-100'
         style={{ height: 'calc(44px + env(safe-area-inset-top, 0px) + 4px)', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2px)' }}
@@ -451,22 +460,8 @@ const Index = () => {
         <span className='ml-auto text-xs text-gray-400'>
           {new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
         </span>
-        {user && (
-          <div className='flex items-center gap-1 ml-2'>
-            <button
-              onClick={() => setUserSettingsOpen(true)}
-              className='w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-semibold overflow-hidden'
-              title='个人设置'
-            >
-              {user.avatar_url ? (
-                <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
-              ) : (
-                (user.nickname || user.username || 'U')[0].toUpperCase()
-              )}
-            </button>
-          </div>
-        )}
       </header>
+      )}
 
       {/* ══ PC 端顶部标题栏 ══ */}
       <header className='hidden md:flex flex-shrink-0 bg-white h-14 items-center pl-5 pr-5 border-b border-gray-100'>
@@ -474,7 +469,7 @@ const Index = () => {
           <img src='/logo.png' alt='AI-Buddy' className='h-9 w-9 rounded-md object-cover' />
           <span className='text-base font-semibold text-gray-800 leading-none ml-1'>AI-Buddy</span>
           <span className='text-gray-200 select-none leading-none ml-2'>|</span>
-          <span className='text-base font-medium text-gray-500 leading-none'>{configOpen ? pageTitles.config : pageTitles[activeTab]}</span>
+          <span className='text-base font-medium text-gray-500 leading-none'>{settingsOpen ? '设置' : (configOpen ? pageTitles.config : pageTitles[activeTab])}</span>
         </div>
         <div className='ml-auto flex items-center gap-3'>
           <span className='text-xs text-gray-400'>
@@ -487,26 +482,6 @@ const Index = () => {
               return `${dateStr} · 第${weekNum}周`;
             })()}
           </span>
-          {user && (
-            <div className='flex items-center gap-2 ml-2 pl-3 border-l border-gray-200'>
-              <button
-                onClick={() => setUserSettingsOpen(true)}
-                className='flex items-center gap-2 hover:bg-gray-50 rounded-lg px-2 py-1 -mx-2 transition-colors'
-              >
-                <div className='w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-semibold overflow-hidden'>
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
-                  ) : (
-                    (user.nickname || user.username || 'U')[0].toUpperCase()
-                  )}
-                </div>
-                <span className='text-sm text-gray-700'>{user.nickname || user.username}</span>
-              </button>
-              <Button variant='ghost' size='sm' onClick={handleLogout} className='h-7 px-2 text-gray-500 hover:text-red-500' title='登出'>
-                <LogOut className='h-3.5 w-3.5' />
-              </Button>
-            </div>
-          )}
         </div>
       </header>
 
@@ -517,7 +492,7 @@ const Index = () => {
           {/* 主导航（不再包含梳理入口） */}
           <nav className='flex-1 flex flex-col items-center py-3 gap-1'>
             {navItems.map(({ id, label, icon: Icon }) => {
-              const active = activeTab === id && !configOpen;
+              const active = activeTab === id && !configOpen && !settingsOpen;
               return (
                 <button
                   key={id}
@@ -533,16 +508,22 @@ const Index = () => {
             })}
           </nav>
 
-          {/* 配置管理（底部） */}
-          <div className='border-t border-gray-100 py-3 flex justify-center'>
+          {/* 左下角：头像（点击进入设置中心） */}
+          <div className='border-t border-gray-100 py-3 flex flex-col items-center gap-1'>
             <button
-              onClick={() => setConfigOpen((v) => !v)}
-              title='配置管理'
-              className={`w-14 py-2 rounded-xl flex flex-col items-center gap-1 transition-all ${configOpen ? 'text-[#2d4a00]' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'}`}
-              style={configOpen ? { backgroundColor: '#bbea3b' } : {}}
+              onClick={() => openSettings('profile')}
+              title='个人设置 / 设置中心'
+              className={`w-14 py-2 rounded-xl flex flex-col items-center gap-1 transition-all ${settingsOpen ? 'text-[#2d4a00]' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'}`}
+              style={settingsOpen ? { backgroundColor: '#bbea3b' } : {}}
             >
-              <Settings className='h-4 w-4' />
-              <span className='text-[10px] font-medium leading-none'>配置</span>
+              <div className='w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-semibold overflow-hidden'>
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
+                ) : (
+                  (user?.nickname || user?.username || 'U')[0].toUpperCase()
+                )}
+              </div>
+              <span className='text-[10px] font-medium leading-none truncate max-w-[50px]'>{user?.nickname || user?.username || '我'}</span>
             </button>
           </div>
         </aside>
@@ -551,13 +532,14 @@ const Index = () => {
         <main className='flex-1 overflow-hidden min-h-0'>{renderPage()}</main>
       </div>
 
-      {/* ══ 移动端底部导航(适配底部小白条 + 各种 iOS WebClip 状态) ══ */}
+      {/* ══ 移动端底部导航(适配底部小白条 + 各种 iOS WebClip 状态；设置中心全屏时隐藏) ══ */}
+      {!settingsOpen && (
       <nav
         className='md:hidden flex-shrink-0 bg-white border-t border-gray-100 flex items-stretch z-30'
         style={{ height: 'calc(56px + env(safe-area-inset-bottom, 0px) + 8px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
       >
         {navItems.map(({ id, label, icon: Icon }) => {
-          const active = activeTab === id && !configOpen;
+          const active = activeTab === id && !configOpen && !settingsOpen;
           return (
             <button key={id} onClick={() => handleNavClick(id)} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${active ? 'text-gray-900' : 'text-gray-400'}`}>
               {active && <span className='absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b-full' style={{ backgroundColor: '#bbea3b' }} />}
@@ -577,13 +559,20 @@ const Index = () => {
           <span className={`text-[11px] ${floatNoteOpen ? 'font-semibold' : 'font-normal'}`} style={floatNoteOpen ? { color: '#5a7a00' } : {}}>梳理</span>
         </button>
 
-        {/* 移动端配置入口 */}
-        <button onClick={() => setConfigOpen((v) => !v)} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${configOpen ? 'text-gray-900' : 'text-gray-400'}`}>
-          {configOpen && <span className='absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b-full' style={{ backgroundColor: '#bbea3b' }} />}
-          <Settings className={`h-5 w-5 ${configOpen ? 'stroke-[2px]' : 'stroke-[1.5px]'}`} style={configOpen ? { color: '#5a7a00' } : {}} />
-          <span className={`text-[11px] ${configOpen ? 'font-semibold' : 'font-normal'}`} style={configOpen ? { color: '#5a7a00' } : {}}>配置</span>
+        {/* 移动端设置入口（头像，进入设置中心） */}
+        <button onClick={() => openSettings('profile')} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${settingsOpen ? 'text-gray-900' : 'text-gray-400'}`}>
+          {settingsOpen && <span className='absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b-full' style={{ backgroundColor: '#bbea3b' }} />}
+          <div className='h-5 w-5 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-[9px] font-semibold overflow-hidden'>
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt='avatar' className='w-full h-full object-cover' />
+            ) : (
+              (user?.nickname || user?.username || 'U')[0].toUpperCase()
+            )}
+          </div>
+          <span className={`text-[11px] ${settingsOpen ? 'font-semibold' : 'font-normal'}`} style={settingsOpen ? { color: '#5a7a00' } : {}}>我的</span>
         </button>
       </nav>
+      )}
 
       {/* ══ PC 端悬浮 FAB 按钮（梳理） ══ */}
       <FloatFAB active={floatNoteOpen} onClick={() => setFloatNoteOpen((v) => !v)} />
@@ -594,12 +583,6 @@ const Index = () => {
         onClose={() => setFloatNoteOpen(false)}
         tasks={floatTasks}
         onSelectTask={null}
-      />
-
-      {/* ══ 用户设置弹窗 ══ */}
-      <UserSettingsDialog
-        open={userSettingsOpen}
-        onOpenChange={setUserSettingsOpen}
       />
     </div>
   );

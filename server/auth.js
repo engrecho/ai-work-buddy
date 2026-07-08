@@ -283,19 +283,44 @@ export async function hashApiKey(plainKey) {
   return crypto.createHash('sha256').update(plainKey).digest('hex');
 }
 
+// ── API Key 可逆加密（支持"再次查看明文"，用户已确认此取舍） ──────
+// 独立密钥，不复用 JWT_SECRET（语义不同 + 轮换 JWT 会导致 key 无法解密）
+// 沿用 memos 的 AES-256-CBC + sha256(env) 派生密钥模式
+const APIKEY_ENCRYPTION_KEY = process.env.APIKEY_ENCRYPTION_KEY || 'ai-buddy-apikey-secret-2026';
+
+function encryptApiKey(plainKey) {
+  const iv = crypto.randomBytes(16);
+  const key = crypto.createHash('sha256').update(APIKEY_ENCRYPTION_KEY).digest();
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  const enc = Buffer.concat([cipher.update(plainKey, 'utf8'), cipher.final()]);
+  // 密文格式：base64(IV[16] + ciphertext)，与 decryptMemo 一致
+  return Buffer.concat([iv, enc]).toString('base64');
+}
+
+function decryptApiKey(cipherB64) {
+  const raw = Buffer.from(cipherB64, 'base64');
+  const iv = raw.subarray(0, 16);
+  const ciphertext = raw.subarray(16);
+  const key = crypto.createHash('sha256').update(APIKEY_ENCRYPTION_KEY).digest();
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  const dec = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return dec.toString('utf8');
+}
+
 // 为用户创建 API Key（返回明文 + 元数据）
 export async function createApiKeyForUser(userId, { name = 'Default', expiresInDays } = {}) {
   const plainKey = generateApiKey();
   const keyHash = await hashApiKey(plainKey);
+  const keyCipher = encryptApiKey(plainKey); // 可逆加密，支持后续反查明文
   const keyPrefix = plainKey.slice(0, 12); // 用于显示和识别
   const expiresAt = expiresInDays
     ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
     : null;
 
   await pool.query(
-    `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, expires_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    [userId, keyHash, keyPrefix, name, expiresAt]
+    `INSERT INTO api_keys (user_id, key_hash, key_cipher, key_prefix, name, expires_at, is_legacy)
+     VALUES (?, ?, ?, ?, ?, ?, 0)`,
+    [userId, keyHash, keyCipher, keyPrefix, name, expiresAt]
   );
 
   return {
@@ -304,6 +329,32 @@ export async function createApiKeyForUser(userId, { name = 'Default', expiresInD
     name,
     expires_at: expiresAt,
   };
+}
+
+// 反查 API Key 明文（仅新建格式 is_legacy=0 的 key 可反查）
+export async function revealApiKey(userId, keyId) {
+  const [rows] = await pool.query(
+    `SELECT id, user_id, key_cipher, is_legacy, is_active, key_prefix, name
+     FROM api_keys
+     WHERE id = ? AND user_id = ?
+     LIMIT 1`,
+    [keyId, userId]
+  );
+  if (rows.length === 0) return { ok: false, code: 404, message: 'API Key 不存在' };
+  const row = rows[0];
+  if (!row.is_active) return { ok: false, code: 400, message: '该 Key 已撤销' };
+  if (row.is_legacy || !row.key_cipher) {
+    return { ok: false, code: 400, message: '该 Key 为旧格式（单向哈希），无法反查明文，请撤销后重新创建' };
+  }
+  let plainKey;
+  try {
+    plainKey = decryptApiKey(row.key_cipher);
+  } catch (e) {
+    return { ok: false, code: 500, message: '解密失败（密钥可能已变更）：' + e.message };
+  }
+  // 记录反查日志（不记明文）
+  console.log(`[apikey-reveal] user=${userId} key=${keyId} prefix=${row.key_prefix} name=${row.name} ts=${new Date().toISOString()}`);
+  return { ok: true, api_key: plainKey, key_prefix: row.key_prefix };
 }
 
 // 用 API Key 查找用户（验证用）
@@ -351,7 +402,7 @@ export async function getUserByApiKey(plainKey) {
 // 列出用户的所有 API Key（不包含明文）
 export async function listApiKeysForUser(userId) {
   const [rows] = await pool.query(
-    `SELECT id, name, key_prefix, last_used_at, expires_at, is_active, created_at
+    `SELECT id, name, key_prefix, last_used_at, expires_at, is_active, is_legacy, created_at
      FROM api_keys
      WHERE user_id = ?
      ORDER BY created_at DESC`,
