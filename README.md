@@ -159,6 +159,9 @@ AI-buddy/
 - "关联任务"和"关联链接"字段移至"内容"上方，编辑流程更顺畅
 - "内容"输入框高度自适应页面，充分利用垂直空间
 
+**构建修复（v1.7.0 补丁）**：
+- 修复 `src/pages/ReadingPage.jsx` 中缺失的两个 `</div>` 闭合标签（PC 端"添加文章"按钮外层 div 与顶部操作栏 div），该语法错误曾导致 `vite build` 失败（报 `Expected "}" but found ":"`），现已构建通过
+
 ## AI-Buddy SKILL
 
 把 `buddy-skill/` 整个目录加载到 Claude / GPT 等 AI 助手中，AI 就能查询、修改、整合你在 AI-Buddy 里的所有数据。**这是 AI-Buddy 的差异化亮点**——你的 AI 搭档不再只是聊天框里的对话，而是能直接动你的任务、备忘和阅读收藏。
