@@ -134,6 +134,8 @@ buddy-skill — AI-Buddy 官方 SKILL CLI
   node index.js list-reading              列出阅读收藏
   node index.js add-reading --url "..."   添加阅读收藏
   node index.js where-is-key              显示配置文件位置
+  node index.js extract-video "<分享文本或URL>"   仅解析社媒内容（抖音/B站/小红书等 1000+ 平台）
+  node index.js download-video "<分享文本或URL>"  离线下载（走服务端 API，文件存服务端）
 
 整理策略 strategy 取值：
   archive-completed      归档 30 天前已完成的任务
@@ -193,6 +195,22 @@ node index.js list-reading --starred
 - AI **必须** 在删除任务前向用户确认
 - AI **必须** 在整理任务前调用 `planOrganize`、展示计划、得到确认后才执行
 - 所有写入操作建议先 `dry_run=true` 预览
+
+## 离线下载架构（必读）
+
+buddy-skill 内置社媒解析（`scripts/video_extract.cjs`，零依赖），但**下载文件必须由 AI-Buddy 服务端完成**。
+
+> ⚠️ **你的 Agent 运行环境（本机 / 云端 / OpenClaw 等）与 AI-Buddy 服务端通常不在同一台机器。**
+
+| 命令 | 行为 | 文件存哪 |
+|------|------|---------|
+| `extract-video` | 仅调用内置脚本解析，返回原始直链（标题/封面/清晰度），**不下载** | 不涉及 |
+| `download-video` | 通过 API 调用 `POST /api/v1/extract/download`，**由服务端下载** | **服务端**统一目录（由 `GV_OUTPUT` 或默认 `data/offline/` 决定） |
+
+**铁律：**
+1. 离线下载永远走 `download-video`，**不要**直接 `node scripts/download_videos.cjs ...`。后者是服务端内部脚本，在 Agent 本机运行会把文件下到 Agent 机器，用户在 Buddy 网页看不到。
+2. `download-video` 返回 `offline_path`，文件始终在服务端，与 Agent 在哪台机器无关。
+3. 不需要、也不要安装外部 `ExtractVideoSkill`——buddy-skill 已完全自包含。
 
 ## API 参考
 
@@ -267,6 +285,10 @@ buddy-skill/
 │   ├── client.js            # HTTP 客户端（封装所有 API 调用）
 │   ├── config.js            # 配置文件管理（~/.buddy-skill/config.json）
 │   └── prompts.js           # AI Prompt 模板
+├── scripts/
+│   ├── video_extract.cjs    # 内置社媒解析（零依赖，仅服务端/CLI 内部调用）
+│   ├── download_videos.cjs  # 服务端内部下载脚本（仅 AI-Buddy 服务端调用）
+│   └── init_config.cjs      # 服务端配置初始化
 ├── tools/
 │   ├── organize.js          # 整理任务（含 plan-then-confirm）
 │   └── confirm.js           # 确认机制（格式化展示给用户）
@@ -314,6 +336,8 @@ buddy-skill/
 | `403 dry_run=true required` | 整理任务没指定 dry_run | 这是设计：必须先预览 |
 | `ECONNREFUSED` | API Base URL 错误 | 改用 `https://buddy.bajiaolu.cn/api/v1` |
 | `Node.js version < 18` | 没有原生 fetch | 升级 Node.js |
+| 文件下到了 Agent 本机 / OpenClaw 目录 | 误用 `node scripts/download_videos.cjs` | 改用 `node index.js download-video`，让服务端下载 |
+| 用户在 Buddy 网页看不到离线文件 | 同上，文件没存到服务端 | 一律走 `download-video` 命令，返回 `offline_path` 即代表已存服务端 |
 
 ### 调试
 
