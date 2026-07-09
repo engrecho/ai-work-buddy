@@ -1,14 +1,25 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2 } from 'lucide-react';
-import TasksPage from './TasksPage';
-import MemosPage from './MemosPage';
-import ReadingPage from './ReadingPage';
-import DashboardPage from './DashboardPage';
-import { ConfigContent } from '@/components/ConfigSection';
-import NoteView from '@/components/NoteView';
-import { SettingsCenter } from '@/pages/SettingsCenter';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
+
+const TasksPage = lazy(() => import('./TasksPage'));
+const MemosPage = lazy(() => import('./MemosPage'));
+const ReadingPage = lazy(() => import('./ReadingPage'));
+const DashboardPage = lazy(() => import('./DashboardPage'));
+const ConfigContent = lazy(() => import('@/components/ConfigSection').then(m => ({ default: m.ConfigContent })));
+const NoteView = lazy(() => import('@/components/NoteView'));
+const SettingsCenter = lazy(() => import('@/pages/SettingsCenter').then(m => ({ default: m.SettingsCenter })));
+
+function TabLoader() {
+  return (
+    <div className="h-full flex items-center justify-center bg-[#f5f5f5]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-6 h-6 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+        <div className="text-xs text-gray-400">加载中...</div>
+      </div>
+    </div>
+  );
+}
 
 const navItems = [
   { id: 'dashboard', label: '总览', icon: LayoutDashboard },
@@ -225,7 +236,9 @@ function FloatNotePanel({ open, onClose, tasks, onSelectTask }) {
           {/* 内容区 */}
           {!minimized && (
             <div className='flex-1 overflow-hidden min-h-0'>
-              <NoteView tasks={tasks} onSelectTask={onSelectTask} floatMode />
+              <Suspense fallback={<TabLoader />}>
+                <NoteView tasks={tasks} onSelectTask={onSelectTask} floatMode />
+              </Suspense>
             </div>
           )}
         </div>
@@ -263,7 +276,9 @@ function FloatNotePanel({ open, onClose, tasks, onSelectTask }) {
           </div>
           {/* 内容区 */}
           <div className='flex-1 overflow-hidden min-h-0'>
-            <NoteView tasks={tasks} onSelectTask={onSelectTask} />
+            <Suspense fallback={<TabLoader />}>
+              <NoteView tasks={tasks} onSelectTask={onSelectTask} />
+            </Suspense>
           </div>
         </div>
       </div>
@@ -416,10 +431,12 @@ const Index = () => {
   const renderPage = () => {
     if (settingsOpen) {
       return (
-        <SettingsCenter
-          onBack={() => setSettingsOpen(false)}
-          defaultSection={settingsSection}
-        />
+        <Suspense fallback={<TabLoader />}>
+          <SettingsCenter
+            onBack={() => setSettingsOpen(false)}
+            defaultSection={settingsSection}
+          />
+        </Suspense>
       );
     }
     if (configOpen) {
@@ -427,7 +444,9 @@ const Index = () => {
         <div className='h-full overflow-y-auto bg-[#f5f5f5]'>
           <div className='max-w-3xl mx-auto px-4 py-6'>
             <div className='bg-white rounded-2xl border border-gray-100 p-5 shadow-sm'>
-              <ConfigContent />
+              <Suspense fallback={<TabLoader />}>
+                <ConfigContent />
+              </Suspense>
             </div>
           </div>
         </div>
@@ -435,15 +454,35 @@ const Index = () => {
     }
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardPage onNavigate={handleNavClick} />;
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <DashboardPage onNavigate={handleNavClick} />
+          </Suspense>
+        );
       case 'tasks':
-        return <TasksPage initialTaskId={pendingTaskId} onInitialTaskConsumed={() => setPendingTaskId(null)} onGoToMemo={handleGoToMemo} onTasksLoaded={setFloatTasks} />;
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <TasksPage initialTaskId={pendingTaskId} onInitialTaskConsumed={() => setPendingTaskId(null)} onGoToMemo={handleGoToMemo} onTasksLoaded={setFloatTasks} />
+          </Suspense>
+        );
       case 'memos':
-        return <MemosPage initialMemoId={pendingMemoId} onInitialMemoConsumed={() => setPendingMemoId(null)} onGoToTask={handleGoToTask} />;
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <MemosPage initialMemoId={pendingMemoId} onInitialMemoConsumed={() => setPendingMemoId(null)} onGoToTask={handleGoToTask} />
+          </Suspense>
+        );
       case 'reading':
-        return <ReadingPage />;
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <ReadingPage />
+          </Suspense>
+        );
       default:
-        return <DashboardPage onNavigate={handleNavClick} />;
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <DashboardPage onNavigate={handleNavClick} />
+          </Suspense>
+        );
     }
   };
 
