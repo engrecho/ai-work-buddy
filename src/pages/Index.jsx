@@ -365,7 +365,7 @@ const Index = () => {
   const [floatNoteOpen, setFloatNoteOpen] = useState(false);
   const [floatTasks, setFloatTasks] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState('profile');
+  const [settingsSection, setSettingsSection] = useState(null);
 
   const { user } = useAuth();
 
@@ -398,9 +398,7 @@ const Index = () => {
     setSettingsOpen(false);
   };
   const openSettings = (section) => {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const defaultSection = isMobile ? null : 'profile';
-    setSettingsSection(section ?? defaultSection);
+    setSettingsSection(section ?? null);
     setSettingsOpen(true);
     setConfigOpen(false);
   };
@@ -562,7 +560,7 @@ const Index = () => {
         </button>
 
         {/* 移动端设置入口（头像，进入设置中心） */}
-        <button onClick={() => openSettings('profile')} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${settingsOpen ? 'text-gray-900' : 'text-gray-400'}`}>
+        <button onClick={() => openSettings()} className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${settingsOpen ? 'text-gray-900' : 'text-gray-400'}`}>
           {settingsOpen && <span className='absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b-full' style={{ backgroundColor: '#bbea3b' }} />}
           <div className='h-5 w-5 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-[9px] font-semibold overflow-hidden'>
             {user?.avatar_url ? (
