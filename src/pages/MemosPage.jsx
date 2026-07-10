@@ -172,13 +172,12 @@ function DirectionPicker({ form, setForm, groups, hideLabel = false }) {
         <button
           type='button'
           onClick={() => setFormDirection('')}
-          className={`flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-medium border transition-all ${
+          className={`flex-shrink-0 px-3 h-7 rounded-md text-xs font-medium transition-colors ${
             !selectedId
-              ? 'bg-gray-800 text-white border-gray-800 shadow-sm'
-              : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+              ? 'bg-gray-800 text-white'
+              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
           }`}
         >
-          <span className='w-2 h-2 rounded-full border border-dashed border-current opacity-60' />
           未分类
         </button>
         {groups.map((g) => {
@@ -188,29 +187,27 @@ function DirectionPicker({ form, setForm, groups, hideLabel = false }) {
               key={g.id}
               type='button'
               onClick={() => setFormDirection(String(g.id))}
-              className={`flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-medium border transition-all ${
+              className={`flex-shrink-0 px-3 h-7 rounded-md text-xs font-medium transition-colors ${
                 isActive
-                  ? 'text-white border-transparent shadow-sm'
-                  : 'bg-white border-gray-200 hover:border-gray-300'
+                  ? 'text-white'
+                  : 'bg-gray-100 hover:bg-gray-200'
               }`}
               style={
                 isActive
-                  ? { backgroundColor: g.color, borderColor: g.color }
+                  ? { backgroundColor: g.color }
                   : { color: g.color }
               }
             >
-              <span
-                className='w-2 h-2 rounded-full flex-shrink-0'
-                style={{ backgroundColor: isActive ? 'rgba(255,255,255,0.85)' : g.color }}
-              />
-              <span className='max-w-[5rem] truncate'>{g.name}</span>
+              {g.name}
             </button>
           );
         })}
       </div>
     </div>
   );
-} // ── 标签多选器（直接展示所有 Chip，无下拉）──────────────
+}
+
+// ── 标签多选器（标签云，多行排列）──────────────
 
 const TAG_PRESET_COLORS = [
   '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b',
@@ -261,7 +258,7 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
       <div className='text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1'>
         <Tag className='h-3 w-3' /> 标签
       </div>
-      <div className='flex flex-wrap gap-1.5 items-center'>
+      <div className='flex flex-wrap gap-1.5'>
         {tags.length === 0 && !adding && (
           <span className='text-xs text-gray-400 py-1'>暂无标签</span>
         )}
@@ -272,23 +269,19 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
               key={t.id}
               type='button'
               onClick={() => toggleTag(t.id)}
-              className={`inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-xs font-medium border transition-all ${
+              className={`inline-flex items-center gap-1 px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
                 isSelected
-                  ? 'text-white border-transparent shadow-sm'
-                  : 'bg-white border-gray-200 hover:border-gray-300 opacity-70 hover:opacity-100'
+                  ? 'text-white'
+                  : 'bg-gray-100 hover:bg-gray-200'
               }`}
               style={
                 isSelected
-                  ? { backgroundColor: t.color, borderColor: t.color }
+                  ? { backgroundColor: t.color }
                   : { color: t.color }
               }
             >
-              <span
-                className='w-1.5 h-1.5 rounded-full flex-shrink-0'
-                style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.85)' : t.color }}
-              />
-              <span className='max-w-[6rem] truncate'>{t.name}</span>
-              {isSelected && <Check className='w-3 h-3 ml-0.5 opacity-80' />}
+              <span className='max-w-[8rem] truncate'>{t.name}</span>
+              {isSelected && <Check className='w-3 h-3 opacity-80' />}
             </button>
           );
         })}
@@ -296,12 +289,12 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
           <button
             type='button'
             onClick={handleStartAdd}
-            className='inline-flex items-center gap-1 px-2 h-7 rounded-full text-xs text-gray-400 border border-dashed border-gray-300 hover:border-gray-400 hover:text-gray-600 transition-colors'
+            className='inline-flex items-center gap-1 px-2 h-7 rounded-md text-xs text-gray-400 bg-gray-50 border border-dashed border-gray-200 hover:bg-gray-100 hover:text-gray-600 transition-colors'
           >
             <Plus className='w-3 h-3' /> 新增
           </button>
         ) : (
-          <div className='w-full mt-1 p-2 rounded-lg border border-gray-100 bg-gray-50/60'>
+          <div className='w-full mt-1 p-2 rounded-lg border border-gray-100 bg-gray-50'>
             <div className='flex items-center gap-2'>
               <input
                 ref={newInputRef}
@@ -326,12 +319,12 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
                 <X className='w-3.5 h-3.5' />
               </button>
             </div>
-            <div className='flex flex-wrap gap-1 mt-2'>
+            <div className='flex flex-wrap gap-1.5 mt-2'>
               {TAG_PRESET_COLORS.map((c) => (
                 <button
                   key={c} type='button'
                   onClick={() => setNewColor(c)}
-                  className={`w-4 h-4 rounded-full flex-shrink-0 transition-transform ${newColor === c ? 'scale-110 ring-2 ring-offset-1 ring-gray-300' : 'hover:scale-105'}`}
+                  className={`w-5 h-5 rounded-md flex-shrink-0 transition-transform ${newColor === c ? 'scale-110 ring-2 ring-offset-1 ring-gray-300' : 'hover:scale-105'}`}
                   style={{ backgroundColor: c }}
                 />
               ))}

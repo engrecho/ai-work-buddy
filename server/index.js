@@ -152,6 +152,34 @@ function triggerOfflineDownloadAsync(userId, readingId, url, parsedData) {
   })();
 }
 
+// 后台异步自动解析补全（不阻塞响应）
+function triggerAutoParseAsync(userId, readingId, url) {
+  (async () => {
+    try {
+      console.log(`[auto_parse] 后台开始解析: reading_id=${readingId}, url=${url?.slice(0, 80)}`);
+      const parsed = await parseShare(url);
+      if (parsed.code === 200) {
+        const updates = {};
+        if (parsed.title) updates.title = parsed.title;
+        if (parsed.cover_url) updates.cover_url = parsed.cover_url;
+        if (parsed.platform) updates.platform = parsed.platform;
+        if (parsed.summary) updates.summary = parsed.summary;
+        if (Object.keys(updates).length > 0) {
+          const sets = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+          const vals = Object.values(updates);
+          vals.push(readingId, userId);
+          await pool.query(`UPDATE reading_items SET ${sets} WHERE id = ? AND user_id = ?`, vals);
+          console.log(`[auto_parse] 解析完成并更新: reading_id=${readingId}, fields=${Object.keys(updates).join(',')}`);
+        }
+      } else {
+        console.error(`[auto_parse] 解析失败: reading_id=${readingId}, code=${parsed.code}`);
+      }
+    } catch (err) {
+      console.error(`[auto_parse] 异常: reading_id=${readingId}, err=`, err.message);
+    }
+  })();
+}
+
 // ── 从 parsed_data 提取元信息 ──────────────────────────────────
 // 输入：用户传入的完整 API 返回格式 { code, data: { vid, host, displayTitle, videoItemVoList: [...] } }
 // 输出：{ title, cover_url, platform, summary, has_video, has_markdown }
@@ -812,8 +840,9 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
       return res.json({ data: null, error: { message: 'No data provided' } });
     }
 
-    // reading_items: 收集需要后台离线下载的行
+    // reading_items: 收集需要后台离线下载的行 / 后台异步解析的行
     const offlinePending = []; // { id, url, parsedData }
+    const autoParsePending = []; // { rowIdx, url }
 
     const validCols = TABLE_COLUMNS[table];
     const columns = [];
@@ -844,19 +873,27 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
           }
         }
         // 3) auto_parse: 服务端自动解析（仅当没有 parsed_data 时才调用）
+        //    async_parse=true 时立即返回，后台异步解析补全；否则同步等待解析完成
         const wantAutoParse = row.auto_parse === true || row.autoParse === true || row.auto_parse === 'true';
+        const asyncParse = row.async_parse === true || row.asyncParse === true || row.async_parse === 'true';
         const hasParsedData = !!(parsedData && typeof parsedData === 'object');
         if (wantAutoParse && row.url && !hasParsedData) {
-          try {
-            const parsed = await parseShare(row.url);
-            if (parsed.code === 200) {
-              if (!row.title && parsed.title) row.title = parsed.title;
-              if (!row.cover_url && parsed.cover_url) row.cover_url = parsed.cover_url;
-              if (!row.platform && parsed.platform) row.platform = parsed.platform;
-              if (!row.summary && parsed.summary) row.summary = parsed.summary;
+          if (asyncParse) {
+            // 异步模式：先记录一下，存库后触发后台解析
+            autoParsePending.push({ rowIdx: valueRows.length, url: row.url });
+          } else {
+            // 同步模式（默认）：等待解析完成
+            try {
+              const parsed = await parseShare(row.url);
+              if (parsed.code === 200) {
+                if (!row.title && parsed.title) row.title = parsed.title;
+                if (!row.cover_url && parsed.cover_url) row.cover_url = parsed.cover_url;
+                if (!row.platform && parsed.platform) row.platform = parsed.platform;
+                if (!row.summary && parsed.summary) row.summary = parsed.summary;
+              }
+            } catch (parseErr) {
+              console.error('[auto_parse] 解析失败:', parseErr.message);
             }
-          } catch (parseErr) {
-            console.error('[auto_parse] 解析失败:', parseErr.message);
           }
         }
       }
@@ -906,6 +943,7 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     let data = null;
     if (rows.length === 1) {
       const firstWantOffline = offlinePending.some(p => p.rowIdx === 0);
+      const firstWantAutoParse = autoParsePending.some(p => p.rowIdx === 0);
       data = { ...rows[0], user_id: autoUserId, is_offline: firstWantOffline ? true : (rows[0].is_offline ?? false) };
       if (result.insertId) data.id = result.insertId;
       // 触发后台离线下载
@@ -913,15 +951,25 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
         const p = offlinePending.find(p => p.rowIdx === 0);
         triggerOfflineDownloadAsync(req.user.id, result.insertId, p?.url || rows[0].url, p?.parsedData || null);
       }
+      // 触发后台自动解析
+      if (firstWantAutoParse && result.insertId) {
+        const p = autoParsePending.find(p => p.rowIdx === 0);
+        triggerAutoParseAsync(req.user.id, result.insertId, p.url);
+      }
     } else {
       data = rows.map((r, i) => {
         const insertedId = result.insertId ? result.insertId + i : r.id;
         const wantOffline = offlinePending.some(p => p.rowIdx === i);
+        const wantAutoParse = autoParsePending.some(p => p.rowIdx === i);
         const item = { ...r, user_id: autoUserId, is_offline: wantOffline ? true : (r.is_offline ?? false) };
         if (insertedId) item.id = insertedId;
         if (wantOffline && insertedId) {
           const p = offlinePending.find(p => p.rowIdx === i);
           triggerOfflineDownloadAsync(req.user.id, insertedId, p?.url || r.url, p?.parsedData || null);
+        }
+        if (wantAutoParse && insertedId) {
+          const p = autoParsePending.find(p => p.rowIdx === i);
+          triggerAutoParseAsync(req.user.id, insertedId, p.url);
         }
         return item;
       });
@@ -1320,20 +1368,27 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
         }
 
         // 3) auto_parse: 服务端自动解析补全（仅当没有 parsed_data 且用户明确要求时才调用）
+        //    async_parse=true 时立即返回，后台异步解析补全；否则同步等待解析完成
         const wantAutoParse = body.auto_parse === true || body.autoParse === true || body.auto_parse === 'true';
+        const asyncParse = body.async_parse === true || body.asyncParse === true || body.async_parse === 'true';
         const hasParsedData = !!(parsedData && typeof parsedData === 'object');
+        let needAsyncParse = false;
         if (wantAutoParse && row.url && !hasParsedData) {
-          try {
-            const parsed = await parseShare(row.url);
-            if (parsed.code === 200) {
-              if (!row.title && parsed.title) row.title = parsed.title;
-              if (!row.cover_url && parsed.cover_url) row.cover_url = parsed.cover_url;
-              if (!row.platform && parsed.platform) row.platform = parsed.platform;
-              if (!row.summary && parsed.summary) row.summary = parsed.summary;
+          if (asyncParse) {
+            needAsyncParse = true;
+          } else {
+            try {
+              const parsed = await parseShare(row.url);
+              if (parsed.code === 200) {
+                if (!row.title && parsed.title) row.title = parsed.title;
+                if (!row.cover_url && parsed.cover_url) row.cover_url = parsed.cover_url;
+                if (!row.platform && parsed.platform) row.platform = parsed.platform;
+                if (!row.summary && parsed.summary) row.summary = parsed.summary;
+              }
+            } catch (parseErr) {
+              // 解析失败不影响保存，只打日志
+              console.error('[auto_parse] 解析失败:', parseErr.message);
             }
-          } catch (parseErr) {
-            // 解析失败不影响保存，只打日志
-            console.error('[auto_parse] 解析失败:', parseErr.message);
           }
         }
       }
@@ -1352,6 +1407,10 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
       if (table === 'reading_items' && wantOffline) {
         const pd = body.parsed_data || body.parsedData;
         triggerOfflineDownloadAsync(req.user.id, insertId, row.url, pd && typeof pd === 'object' ? pd : null);
+      }
+      // reading_items: 后台异步自动解析
+      if (table === 'reading_items' && needAsyncParse) {
+        triggerAutoParseAsync(req.user.id, insertId, row.url);
       }
     } catch (err) {
       res.json({ data: null, error: { message: err.message } });
