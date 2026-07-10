@@ -345,6 +345,89 @@ export async function parseAndDownload(input) {
 }
 
 /**
+ * 用已有的解析结果直接下载，不再重新解析（避免 IP 被限流）。
+ * @param {Object} parsedData 完整 API 返回格式（{code, data:{vid,host,displayTitle,videoItemVoList}}）
+ *                           或 parseExtractJson 格式（{code,vid,host,title,items}）
+ * @param {string} inputText 原始输入（用于日志显示）
+ * @returns {Promise<{code, message, host?, vid?, offline_path?, offline_path_abs?, stdout?, stderr?}>}
+ */
+export async function downloadFromParsedData(parsedData, inputText = '') {
+  if (!parsedData) {
+    return { code: 400, message: 'parsedData 不能为空' };
+  }
+
+  if (!fs.existsSync(DOWNLOAD_SCRIPT)) {
+    return {
+      code: 500,
+      message: `未找到 download 脚本：${DOWNLOAD_SCRIPT}。`,
+    };
+  }
+
+  const outputRoot = resolveOutputRoot();
+  fs.mkdirSync(outputRoot, { recursive: true });
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = '';
+    let stderr = '';
+    const child = spawn(NODE_BIN, [DOWNLOAD_SCRIPT, '--from-json'], {
+      env: { ...process.env, GV_OUTPUT: outputRoot, GV_NODE: NODE_BIN },
+    });
+
+    // 通过 stdin 传入 JSON
+    child.stdin.write(JSON.stringify({
+      input: inputText,
+      ...parsedData,
+    }));
+    child.stdin.end();
+
+    child.stdout.on('data', (b) => { stdout += b.toString(); });
+    child.stderr.on('data', (b) => { stderr += b.toString(); });
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill('SIGKILL');
+      resolve({
+        code: 504,
+        message: '下载超时（90s）',
+        stdout,
+        stderr,
+      });
+    }, SPAWN_TIMEOUT_MS);
+
+    child.on('close', (code_) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+
+      // 从输出里抓 [OK]   <host>/<vid>  -> <dir> 行
+      const m = stdout.match(/\[OK\]\s+(\S+)\/(\S+)\s+->\s+(\S+)/);
+      if (m) {
+        const dirAbs = m[3].replace(/\/+$/, '');
+        const dirName = path.basename(dirAbs);
+        resolve({
+          code: 200,
+          message: '下载完成',
+          host: m[1],
+          vid: m[2],
+          offline_path: dirName,
+          offline_path_abs: dirAbs,
+          stdout,
+        });
+        return;
+      }
+      resolve({
+        code: 500,
+        message: `下载失败 (exit ${code_})`,
+        stdout,
+        stderr,
+      });
+    });
+  });
+}
+
+/**
  * 安全解析 offline_path：必须是 OUTPUT_ROOT 的子目录或等于 OUTPUT_ROOT。
  * 接受两种入参：
  *   - 绝对路径（download 脚本输出）：校验必须位于 OUTPUT_ROOT 内

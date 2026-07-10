@@ -16,7 +16,7 @@ import {
   updateUserProfile, changePassword,
   createApiKeyForUser, listApiKeysForUser, revokeApiKey, revealApiKey, getUserByApiKey
 } from './auth.js';
-import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles, extractUrl } from './extract.js';
+import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles, extractUrl, downloadFromParsedData } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -110,17 +110,23 @@ app.post('/api/extract/redownload', authMiddleware, async (req, res) => {
 // ── 后台异步离线下载工具 ──────────────────────────────────
 // 下载可能耗时较长（几十秒），创建/更新接口立即返回，后台异步执行。
 // 下载成功后自动更新 is_offline=true 和 offline_path；失败则回滚。
-function triggerOfflineDownloadAsync(userId, readingId, url) {
+function triggerOfflineDownloadAsync(userId, readingId, url, parsedData) {
   // fire-and-forget：不阻塞响应
   (async () => {
     try {
-      console.log(`[offline] 开始后台下载: reading_id=${readingId}, url=${url?.slice(0, 80)}`);
-      const input = String(url || '');
-      if (!input) {
-        console.error(`[offline] reading_id=${readingId} 无 url，跳过下载`);
-        return;
+      console.log(`[offline] 开始后台下载: reading_id=${readingId}, url=${url?.slice(0, 80)}, has_parsed_data=${!!parsedData}`);
+      let result;
+      if (parsedData) {
+        // 用传入的解析结果直接下载，不再重新解析（避免 IP 限流）
+        result = await downloadFromParsedData(parsedData, url);
+      } else {
+        const input = String(url || '');
+        if (!input) {
+          console.error(`[offline] reading_id=${readingId} 无 url，跳过下载`);
+          return;
+        }
+        result = await parseAndDownload(input);
       }
-      const result = await parseAndDownload(input);
       if (result.code === 200 && result.offline_path) {
         await pool.query(
           'UPDATE reading_items SET is_offline = 1, offline_path = ? WHERE id = ? AND user_id = ?',
@@ -144,6 +150,90 @@ function triggerOfflineDownloadAsync(userId, readingId, url) {
       } catch (_) {}
     }
   })();
+}
+
+// ── 从 parsed_data 提取元信息 ──────────────────────────────────
+// 输入：用户传入的完整 API 返回格式 { code, data: { vid, host, displayTitle, videoItemVoList: [...] } }
+// 输出：{ title, cover_url, platform, summary, has_video, has_markdown }
+// 跟 parseShare 返回的字段对齐，方便复用
+function extractMetaFromParsedData(parsed) {
+  if (!parsed) return null;
+  const data = parsed.data || {};
+  const rawItems = data.videoItemVoList || parsed.items || [];
+
+  // 标题
+  let title = data.displayTitle || data.title || parsed.title || '';
+  // 清洗 HTML（公众号标题可能带 span 标签）
+  title = title
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCodePoint(Number(n)); } catch { return ''; }
+    })
+    .replace(/\s+/g, ' ').trim();
+
+  // 封面
+  let cover_url = null;
+  for (const v of rawItems) {
+    const qa = (v.qualityAlias || v.quality || '').toLowerCase();
+    if (qa.includes('封面') || qa.includes('cover')) {
+      cover_url = v.baseUrl;
+      break;
+    }
+  }
+  if (!cover_url) {
+    for (const v of rawItems) {
+      if (v.fileType === 'image') {
+        cover_url = v.baseUrl;
+        break;
+      }
+    }
+  }
+
+  // 平台
+  const platform = (function normalizePlatform(host) {
+    if (!host) return 'other';
+    const h = String(host).toLowerCase();
+    if (h.includes('douyin')) return 'douyin';
+    if (h.includes('kuaishou') || h.includes('ksapp')) return 'kuaishou';
+    if (h.includes('bilibili') || h === 'b23.tv' || h === 'bili2233.cn') return 'bilibili';
+    if (h.includes('xiaohongshu') || h.includes('xhscdn') || h.includes('xhs')) return 'xiaohongshu';
+    if (h.includes('weixin') || h.includes('mp.weixin') || h.includes('wechat') || h.includes('weixinpub')) return 'wechat';
+    if (h.includes('youtube') || h.includes('youtu.be') || h.includes('yt')) return 'youtube';
+    if (h.includes('tiktok')) return 'tiktok';
+    if (h.includes('weibo')) return 'weibo';
+    if (h.includes('ixigua')) return 'xigua';
+    if (h.includes('zhihu')) return 'zhihu';
+    return 'other';
+  })(data.host || parsed.host || '');
+
+  // markdown / summary
+  let summary = '';
+  let has_markdown = false;
+  for (const v of rawItems) {
+    const qa = (v.qualityAlias || v.quality || '').toLowerCase();
+    if (v.fileType === 'video' && qa.includes('markdown')) {
+      const t = String(v.baseUrl || '');
+      const isRealMd = /(^|\n)#{1,6}\s|^!\[|]\(http/m.test(t);
+      if (isRealMd) {
+        has_markdown = true;
+        summary = t.slice(0, 1000);
+        break;
+      }
+    }
+  }
+
+  const has_video = rawItems.some(i =>
+    i.fileType === 'video' && !/markdown/i.test(i.quality || i.qualityAlias || '')
+  );
+
+  return { title, cover_url, platform, summary, has_video, has_markdown };
 }
 
 // 列出某条 reading 的离线文件
@@ -723,7 +813,7 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     }
 
     // reading_items: 收集需要后台离线下载的行
-    const offlinePending = []; // { id, url }
+    const offlinePending = []; // { id, url, parsedData }
 
     const validCols = TABLE_COLUMNS[table];
     const columns = [];
@@ -742,9 +832,21 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
             row.url = extracted;
           }
         }
-        // 2) auto_parse: 自动解析补全字段（用户传的优先）
+        // 2) parsed_data: 直接使用传入的解析结果（跳过服务端解析，避免 IP 限流）
+        const parsedData = row.parsed_data || row.parsedData;
+        if (parsedData && typeof parsedData === 'object') {
+          const meta = extractMetaFromParsedData(parsedData);
+          if (meta) {
+            if (!row.title && meta.title) row.title = meta.title;
+            if (!row.cover_url && meta.cover_url) row.cover_url = meta.cover_url;
+            if (!row.platform && meta.platform) row.platform = meta.platform;
+            if (!row.summary && meta.summary) row.summary = meta.summary;
+          }
+        }
+        // 3) auto_parse: 服务端自动解析（仅当没有 parsed_data 时才调用）
         const wantAutoParse = row.auto_parse === true || row.autoParse === true || row.auto_parse === 'true';
-        if (wantAutoParse && row.url) {
+        const hasParsedData = !!(parsedData && typeof parsedData === 'object');
+        if (wantAutoParse && row.url && !hasParsedData) {
           try {
             const parsed = await parseShare(row.url);
             if (parsed.code === 200) {
@@ -785,7 +887,12 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
 
       // 记录需要离线的行（用行在数组中的索引，后面拿到 insertId 再补）
       if (wantOffline) {
-        offlinePending.push({ rowIdx: valueRows.length - 1, url: row.url });
+        const pd = row.parsed_data || row.parsedData;
+        offlinePending.push({
+          rowIdx: valueRows.length - 1,
+          url: row.url,
+          parsedData: pd && typeof pd === 'object' ? pd : null,
+        });
       }
     }
 
@@ -803,7 +910,8 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
       if (result.insertId) data.id = result.insertId;
       // 触发后台离线下载
       if (firstWantOffline && result.insertId) {
-        triggerOfflineDownloadAsync(req.user.id, result.insertId, offlinePending.find(p => p.rowIdx === 0)?.url || rows[0].url);
+        const p = offlinePending.find(p => p.rowIdx === 0);
+        triggerOfflineDownloadAsync(req.user.id, result.insertId, p?.url || rows[0].url, p?.parsedData || null);
       }
     } else {
       data = rows.map((r, i) => {
@@ -812,7 +920,8 @@ app.post('/api/:table', requireAuthForBusinessTable, async (req, res) => {
         const item = { ...r, user_id: autoUserId, is_offline: wantOffline ? true : (r.is_offline ?? false) };
         if (insertedId) item.id = insertedId;
         if (wantOffline && insertedId) {
-          triggerOfflineDownloadAsync(req.user.id, insertedId, offlinePending.find(p => p.rowIdx === i)?.url || r.url);
+          const p = offlinePending.find(p => p.rowIdx === i);
+          triggerOfflineDownloadAsync(req.user.id, insertedId, p?.url || r.url, p?.parsedData || null);
         }
         return item;
       });
@@ -1197,10 +1306,23 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
           }
         }
 
-        // 2) auto_parse: 服务端自动解析补全 title/cover_url/platform/summary
-        //    用户已传的字段优先级最高，不会被覆盖
+        // 2) parsed_data: 直接使用传入的解析结果（跳过服务端解析，避免 IP 限流）
+        //    用户传的字段优先级最高，parsed_data 只补空字段
+        const parsedData = body.parsed_data || body.parsedData;
+        if (parsedData && typeof parsedData === 'object') {
+          const meta = extractMetaFromParsedData(parsedData);
+          if (meta) {
+            if (!row.title && meta.title) row.title = meta.title;
+            if (!row.cover_url && meta.cover_url) row.cover_url = meta.cover_url;
+            if (!row.platform && meta.platform) row.platform = meta.platform;
+            if (!row.summary && meta.summary) row.summary = meta.summary;
+          }
+        }
+
+        // 3) auto_parse: 服务端自动解析补全（仅当没有 parsed_data 且用户明确要求时才调用）
         const wantAutoParse = body.auto_parse === true || body.autoParse === true || body.auto_parse === 'true';
-        if (wantAutoParse && row.url) {
+        const hasParsedData = !!(parsedData && typeof parsedData === 'object');
+        if (wantAutoParse && row.url && !hasParsedData) {
           try {
             const parsed = await parseShare(row.url);
             if (parsed.code === 200) {
@@ -1228,7 +1350,8 @@ for (const table of ['memos', 'reading_items', 'quick_notes']) {
       res.status(201).json({ data: { ...row, id: insertId, is_offline: wantOffline }, error: null });
       // reading_items: 后台异步触发离线下载
       if (table === 'reading_items' && wantOffline) {
-        triggerOfflineDownloadAsync(req.user.id, insertId, row.url);
+        const pd = body.parsed_data || body.parsedData;
+        triggerOfflineDownloadAsync(req.user.id, insertId, row.url, pd && typeof pd === 'object' ? pd : null);
       }
     } catch (err) {
       res.json({ data: null, error: { message: err.message } });

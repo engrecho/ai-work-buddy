@@ -266,14 +266,20 @@ function parseExtractOutput(out) {
 
 // ---------- 单个视频处理 ----------
 
-async function processOne(input) {
+async function processOne(input, preParsed) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`处理: ${input.slice(0, 80)}${input.length > 80 ? '...' : ''}`);
   const t0 = Date.now();
 
-  console.log('  [1/3] 解析中...');
-  const out = callExtract(input);
-  const r = parseExtractJson(out);
+  let r;
+  if (preParsed) {
+    console.log('  [1/3] 使用传入的解析结果（跳过远程解析）');
+    r = preParsed;
+  } else {
+    console.log('  [1/3] 解析中...');
+    const out = callExtract(input);
+    r = parseExtractJson(out);
+  }
 
   if (r.code !== '200') {
     console.log(`  !! 解析失败 code=${r.code} ${r.message}`);
@@ -427,9 +433,62 @@ async function main() {
   }
 
   let inputs = process.argv.slice(2);
+
+  // --from-json: 从 stdin 读取 JSON 解析结果，跳过远程解析
+  // 格式：{ input: "原始分享文本", data: { vid, host, displayTitle, videoItemVoList: [...] } }
+  // 支持直接传 API 返回的完整 JSON，也支持传 parseExtractJson 格式的 JSON
+  const fromJsonIdx = inputs.indexOf('--from-json');
+  if (fromJsonIdx >= 0) {
+    inputs.splice(fromJsonIdx, 1);
+    // 从 stdin 读 JSON
+    const jsonStr = fs.readFileSync(process.stdin.fd, 'utf8');
+    const parsed = JSON.parse(jsonStr);
+    // 统一转成 parseExtractJson 的格式
+    let preParsed;
+    if (parsed.data && parsed.data.videoItemVoList) {
+      preParsed = {
+        code: String(parsed.code || '200'),
+        message: parsed.message || '',
+        vid: parsed.data.vid || '',
+        host: parsed.data.host || '',
+        title: parsed.data.displayTitle || parsed.data.title || '',
+        items: (parsed.data.videoItemVoList || []).map(v => ({
+          quality: v.qualityAlias || String(v.quality || ''),
+          fileType: v.fileType,
+          size: v.size,
+          canDirectDownload: v.canDirectDownload,
+          baseUrl: v.baseUrl,
+        })),
+      };
+    } else if (parsed.items) {
+      preParsed = {
+        code: String(parsed.code || '200'),
+        message: parsed.message || '',
+        vid: parsed.vid || '',
+        host: parsed.host || '',
+        title: parsed.title || '',
+        items: parsed.items,
+      };
+    } else {
+      console.error('--from-json: JSON 格式不正确');
+      process.exit(1);
+    }
+    const inputText = parsed.input || inputs[0] || (parsed.data?.vid || 'pre-parsed');
+    OUTPUT_ROOT = resolveOutputRoot();
+    fs.mkdirSync(OUTPUT_ROOT, { recursive: true });
+    console.log(`输出根目录: ${OUTPUT_ROOT}`);
+    const r = await processOne(inputText, preParsed);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`汇总: 共处理 1 个，${r.ok ? 1 : 0} 个成功`);
+    if (r.ok) console.log(`  [OK]   ${r.host}/${r.vid}  -> ${r.dir}`);
+    else console.log(`  [FAIL] ${r.input?.slice?.(0, 50)}...  (${r.reason})`);
+    return;
+  }
+
   if (inputs.length === 0) {
     console.log(`用法：
   node download_videos.cjs "<分享文本或URL>" ["<更多>" ...]
+  echo '<JSON>' | node download_videos.cjs --from-json
   node download_videos.cjs < urlfile.txt    # 每行一个链接/分享文本
 
 输出根目录优先级：
