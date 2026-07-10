@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, FileText, Link2, Trash2, Pencil, ExternalLink, Tag, Check, X, ChevronLeft, BookOpen, Search, ZapIcon, Clock, LayoutList, Layers, AlertTriangle } from 'lucide-react';
+import { Plus, FileText, Link2, Trash2, Pencil, ExternalLink, Check, X, ChevronLeft, BookOpen, Search, ZapIcon, Clock, LayoutList, Layers, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { genId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -154,60 +154,82 @@ function TagBadge({ tagId, tagMap }) {
       {tag.name}
     </span>
   );
-} // ── 分组选择器（横向 Chip，直接点击，无下拉）──────────────
+} // ── 分组选择器（只显示已选 + 弹出面板选择）──────────────
 
-function DirectionPicker({ form, setForm, groups, hideLabel = false }) {
+function DirectionPicker({ form, setForm, groups }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
   const selectedId = String(form.direction || '');
+  const selectedGroup = groups.find((g) => String(g.id) === selectedId);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   const setFormDirection = (dirId) => {
     setForm((p) => ({ ...p, direction: dirId }));
   };
+
   return (
-    <div className='w-full'>
-      {!hideLabel && (
-        <div className='text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1'>
-          <Layers className='h-3 w-3' /> 分组
-        </div>
-      )}
-      <div className='flex gap-1.5 overflow-x-auto -mx-0.5 px-0.5 py-0.5'>
+    <div className='relative' ref={ref}>
+      <div className='flex items-center gap-1.5'>
+        {selectedGroup ? (
+          <span
+            className='inline-flex items-center px-2.5 h-6 rounded-md text-xs font-medium text-white flex-shrink-0'
+            style={{ backgroundColor: selectedGroup.color }}
+          >
+            {selectedGroup.name}
+          </span>
+        ) : (
+          <span className='inline-flex items-center px-2.5 h-6 rounded-md text-xs font-medium bg-gray-100 text-gray-400 flex-shrink-0'>
+            未分类
+          </span>
+        )}
         <button
           type='button'
-          onClick={() => setFormDirection('')}
-          className={`flex-shrink-0 px-3 h-7 rounded-md text-xs font-medium transition-colors ${
-            !selectedId
-              ? 'bg-gray-800 text-white'
-              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-          }`}
+          onClick={() => setOpen((v) => !v)}
+          className='inline-flex items-center justify-center w-6 h-6 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0'
         >
-          未分类
+          <Pencil className='h-3 w-3' />
         </button>
-        {groups.map((g) => {
-          const isActive = selectedId === String(g.id);
-          return (
+      </div>
+      {open && (
+        <div className='absolute top-full left-0 mt-1 z-50 p-1.5 rounded-lg border border-gray-100 bg-white shadow-lg min-w-[120px]'>
+          <button
+            type='button'
+            onClick={() => { setFormDirection(''); setOpen(false); }}
+            className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              !selectedId ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            未分类
+          </button>
+          {groups.map((g) => (
             <button
               key={g.id}
               type='button'
-              onClick={() => setFormDirection(String(g.id))}
-              className={`flex-shrink-0 px-3 h-7 rounded-md text-xs font-medium transition-colors ${
-                isActive
-                  ? 'text-white'
-                  : 'bg-gray-100 hover:bg-gray-200'
+              onClick={() => { setFormDirection(String(g.id)); setOpen(false); }}
+              className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                selectedId === String(g.id) ? 'bg-gray-100' : 'hover:bg-gray-50'
               }`}
-              style={
-                isActive
-                  ? { backgroundColor: g.color }
-                  : { color: g.color }
-              }
             >
-              {g.name}
+              <span className='w-2 h-2 rounded-full flex-shrink-0' style={{ backgroundColor: g.color }} />
+              <span style={{ color: selectedId === String(g.id) ? g.color : undefined }}>{g.name}</span>
+              {selectedId === String(g.id) && <Check className='h-3 w-3 ml-auto' style={{ color: g.color }} />}
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── 标签多选器（标签云，多行排列）──────────────
+// ── 标签选择器（只显示已选 + 弹出面板选择）──────────────
 
 const TAG_PRESET_COLORS = [
   '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b',
@@ -215,13 +237,29 @@ const TAG_PRESET_COLORS = [
 ];
 
 function TagSelector({ form, setForm, tags, onTagCreated }) {
+  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(TAG_PRESET_COLORS[0]);
   const [saving, setSaving] = useState(false);
+  const ref = useRef(null);
   const newInputRef = useRef(null);
 
   const selectedIds = (form.tag_ids || []).map(String);
+  const selectedTags = tags.filter((t) => selectedIds.includes(String(t.id)));
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+        setAdding(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   const toggleTag = (id) => {
     const sid = String(id);
     const cur = (form.tag_ids || []).map(String);
@@ -230,13 +268,6 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
     } else {
       setForm((p) => ({ ...p, tag_ids: [...(p.tag_ids || []), id] }));
     }
-  };
-
-  const handleStartAdd = () => {
-    setAdding(true);
-    setNewName('');
-    setNewColor(TAG_PRESET_COLORS[0]);
-    setTimeout(() => newInputRef.current?.focus(), 50);
   };
 
   const handleCreateTag = async (e) => {
@@ -248,90 +279,99 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
     await supabase.from('task_tags').insert([{ id, name: newName.trim(), color: newColor }]);
     await onTagCreated?.();
     setForm((p) => ({ ...p, tag_ids: [...(p.tag_ids || []), id] }));
-    setAdding(false);
     setNewName('');
     setSaving(false);
+    setAdding(false);
+    setTimeout(() => newInputRef.current?.focus(), 50);
   };
 
   return (
-    <div className='w-full'>
-      <div className='text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1'>
-        <Tag className='h-3 w-3' /> 标签
-      </div>
-      <div className='flex flex-wrap gap-1.5'>
-        {tags.length === 0 && !adding && (
-          <span className='text-xs text-gray-400 py-1'>暂无标签</span>
+    <div className='relative' ref={ref}>
+      <div className='flex items-center gap-1.5 flex-wrap'>
+        {selectedTags.length === 0 && (
+          <span className='text-xs text-gray-400 h-6 flex items-center'>无标签</span>
         )}
-        {tags.map((t) => {
-          const isSelected = selectedIds.includes(String(t.id));
-          return (
-            <button
-              key={t.id}
-              type='button'
-              onClick={() => toggleTag(t.id)}
-              className={`inline-flex items-center gap-1 px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
-                isSelected
-                  ? 'text-white'
-                  : 'bg-gray-100 hover:bg-gray-200'
-              }`}
-              style={
-                isSelected
-                  ? { backgroundColor: t.color }
-                  : { color: t.color }
-              }
-            >
-              <span className='max-w-[8rem] truncate'>{t.name}</span>
-              {isSelected && <Check className='w-3 h-3 opacity-80' />}
-            </button>
-          );
-        })}
-        {!adding ? (
-          <button
-            type='button'
-            onClick={handleStartAdd}
-            className='inline-flex items-center gap-1 px-2 h-7 rounded-md text-xs text-gray-400 bg-gray-50 border border-dashed border-gray-200 hover:bg-gray-100 hover:text-gray-600 transition-colors'
+        {selectedTags.map((t) => (
+          <span
+            key={t.id}
+            className='inline-flex items-center px-2.5 h-6 rounded-md text-xs font-medium text-white flex-shrink-0'
+            style={{ backgroundColor: t.color }}
           >
-            <Plus className='w-3 h-3' /> 新增
-          </button>
-        ) : (
-          <div className='w-full mt-1 p-2 rounded-lg border border-gray-100 bg-gray-50'>
-            <div className='flex items-center gap-2'>
-              <input
-                ref={newInputRef}
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateTag(e); if (e.key === 'Escape') setAdding(false); }}
-                placeholder='标签名…'
-                className='flex-1 h-7 px-2 text-xs border border-gray-200 rounded-md outline-none focus:border-[#bbea3b] focus:ring-1 focus:ring-[#bbea3b] bg-white transition-colors'
-              />
-              <button
-                type='button' onClick={handleCreateTag}
-                disabled={!newName.trim() || saving}
-                className='h-7 px-2.5 text-xs font-medium rounded-md disabled:opacity-40 transition-colors flex-shrink-0'
-                style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}
-              >
-                {saving ? '…' : '加'}
-              </button>
-              <button
-                type='button' onClick={() => setAdding(false)}
-                className='h-7 px-2 text-xs text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0'
-              >
-                <X className='w-3.5 h-3.5' />
-              </button>
-            </div>
-            <div className='flex flex-wrap gap-1.5 mt-2'>
-              {TAG_PRESET_COLORS.map((c) => (
-                <button
-                  key={c} type='button'
-                  onClick={() => setNewColor(c)}
-                  className={`w-5 h-5 rounded-md flex-shrink-0 transition-transform ${newColor === c ? 'scale-110 ring-2 ring-offset-1 ring-gray-300' : 'hover:scale-105'}`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+            {t.name}
+          </span>
+        ))}
+        <button
+          type='button'
+          onClick={() => setOpen((v) => !v)}
+          className='inline-flex items-center justify-center w-6 h-6 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0'
+        >
+          <Pencil className='h-3 w-3' />
+        </button>
       </div>
+      {open && (
+        <div className='absolute top-full left-0 mt-1 z-50 p-1.5 rounded-lg border border-gray-100 bg-white shadow-lg min-w-[160px] max-w-[280px]'>
+          {tags.length === 0 && !adding && (
+            <p className='text-xs text-gray-400 px-2.5 py-1.5'>暂无标签</p>
+          )}
+          {tags.map((t) => {
+            const isSelected = selectedIds.includes(String(t.id));
+            return (
+              <button
+                key={t.id}
+                type='button'
+                onClick={() => toggleTag(t.id)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                  isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
+                }`}
+              >
+                <span className='w-2 h-2 rounded-full flex-shrink-0' style={{ backgroundColor: t.color }} />
+                <span className='flex-1 truncate' style={{ color: isSelected ? t.color : undefined }}>{t.name}</span>
+                {isSelected && <Check className='h-3 w-3 flex-shrink-0' style={{ color: t.color }} />}
+              </button>
+            );
+          })}
+          {!adding ? (
+            <button
+              type='button'
+              onClick={() => { setAdding(true); setNewName(''); setNewColor(TAG_PRESET_COLORS[0]); setTimeout(() => newInputRef.current?.focus(), 50); }}
+              className='w-full text-left px-2.5 py-1.5 rounded-md text-xs text-gray-400 hover:bg-gray-50 transition-colors flex items-center gap-1.5 border-t border-gray-50 mt-1'
+            >
+              <Plus className='h-3 w-3' /> 新增标签
+            </button>
+          ) : (
+            <div className='p-1.5 border-t border-gray-50 mt-1'>
+              <div className='flex items-center gap-1.5'>
+                <input
+                  ref={newInputRef}
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateTag(e); if (e.key === 'Escape') setAdding(false); }}
+                  placeholder='标签名…'
+                  className='flex-1 h-6 px-2 text-xs border border-gray-200 rounded-md outline-none focus:border-[#bbea3b] focus:ring-1 focus:ring-[#bbea3b] bg-white transition-colors min-w-0'
+                />
+                <button
+                  type='button' onClick={handleCreateTag}
+                  disabled={!newName.trim() || saving}
+                  className='h-6 px-2 text-xs font-medium rounded-md disabled:opacity-40 transition-colors flex-shrink-0'
+                  style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}
+                >
+                  {saving ? '…' : '加'}
+                </button>
+              </div>
+              <div className='flex flex-wrap gap-1 mt-1.5'>
+                {TAG_PRESET_COLORS.map((c) => (
+                  <button
+                    key={c} type='button'
+                    onClick={() => setNewColor(c)}
+                    className={`w-4 h-4 rounded flex-shrink-0 transition-transform ${newColor === c ? 'scale-110 ring-2 ring-offset-1 ring-gray-300' : 'hover:scale-105'}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 } // ── 关联任务选择器 ────────────────────────────────────────────────
@@ -512,15 +552,34 @@ function MobileViewInline({ memo, groups, tags, tasks, groupMap, tagMap, onGoToT
   const [directionVal, setDirectionVal] = useState(memo.direction || '');
   const [tagIdsVal, setTagIdsVal] = useState(memo.tag_ids || []);
   const [contentVal, setContentVal] = useState(memo.content || '');
-  const [contentEditing, setContentEditing] = useState(false);
-  const [savingContent, setSavingContent] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+  const saveTimerRef = useRef(null);
+  const latestContentRef = useRef(memo.content || '');
   useEffect(() => {
     setTitleVal(memo.title || '');
     setDirectionVal(memo.direction || '');
     setTagIdsVal(memo.tag_ids || []);
     setContentVal(memo.content || '');
-    setContentEditing(false);
+    setSaveStatus('');
+    latestContentRef.current = memo.content || '';
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
   }, [memo.id]);
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+  const handleContentChange = (val) => {
+    setContentVal(val);
+    latestContentRef.current = val;
+    setSaveStatus('saving');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await onFieldSave({ content: latestContentRef.current });
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(''), 2000);
+      } catch (err) {
+        setSaveStatus('');
+      }
+    }, 1500);
+  };
   const fakeForm = {
     direction: directionVal,
     tag_ids: tagIdsVal,
@@ -557,8 +616,8 @@ function MobileViewInline({ memo, groups, tags, tasks, groupMap, tagMap, onGoToT
         placeholder='备忘标题…'
         className='w-full text-base font-semibold text-gray-900 bg-transparent border-0 border-b border-gray-100 outline-none pb-1 placeholder-gray-300 focus:border-[#bbea3b] transition-colors'
       />
-      {/* 分组 + 标签（上下排列） */}
-      <div className='space-y-2.5'>
+      {/* 分组 + 标签（同一行，紧凑展示已选） */}
+      <div className='flex items-center gap-2 flex-wrap'>
         <DirectionPicker form={fakeForm} setForm={fakeSetFormDirection} groups={groups} />
         <TagSelector form={fakeForm} setForm={fakeSetFormTags} tags={tags} onTagCreated={onTagCreated} />
       </div>
@@ -582,45 +641,11 @@ function MobileViewInline({ memo, groups, tags, tasks, groupMap, tagMap, onGoToT
       <div className='flex-1 flex flex-col min-h-0'>
         <div className='flex items-center justify-between mb-1'>
           <span className='text-xs font-medium text-gray-400'>内容</span>
-          {contentEditing ? (
-            <div className='flex items-center gap-1.5'>
-              <button
-                onClick={() => {
-                  setContentVal(memo.content || '');
-                  setContentEditing(false);
-                }}
-                className='text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500'
-              >
-                取消
-              </button>
-              <button
-                onClick={async () => {
-                  setSavingContent(true);
-                  await onFieldSave({
-                    content: contentVal,
-                  });
-                  setSavingContent(false);
-                  setContentEditing(false);
-                }}
-                disabled={savingContent}
-                className='text-xs px-2.5 py-1 rounded-lg border-0 flex items-center gap-1'
-                style={{
-                  backgroundColor: '#bbea3b',
-                  color: '#2d4a00',
-                }}
-              >
-                <Check className='h-3 w-3' />
-                {savingContent ? '保存中…' : '保存'}
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setContentEditing(true)} className='flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500'>
-              <Pencil className='h-3 w-3' /> 编辑
-            </button>
-          )}
+          {saveStatus === 'saving' && <span className='text-xs text-gray-400'>保存中…</span>}
+          {saveStatus === 'saved' && <span className='text-xs text-green-500'>已保存</span>}
         </div>
-        <div className='flex-1 min-h-[200px]'>
-          <RichEditor key={`${memo.id}-${contentEditing ? 'edit' : 'view'}-mobile`} value={contentVal} onChange={(val) => setContentVal(val)} placeholder='写下备忘内容…' readOnly={!contentEditing} />
+        <div className='flex-1 min-h-0'>
+          <RichEditor key={`${memo.id}-mobile`} value={contentVal} onChange={handleContentChange} placeholder='写下备忘内容…' />
         </div>
       </div>
     </div>
@@ -649,8 +674,8 @@ function MemoEditForm({ form, setForm, groups, tags, tasks, panelMode, onCancel,
       <div className='flex-1 overflow-y-auto px-5 py-4 space-y-4'>
         {/* 标题 */}
         <div></div>
-        {/* 分组 + 标签（上下排列，更直观） */}
-        <div className='space-y-3'>
+        {/* 分组 + 标签（同一行，紧凑展示已选） */}
+        <div className='flex items-center gap-2 flex-wrap'>
           <DirectionPicker form={form} setForm={setForm} groups={groups} />
           <TagSelector form={form} setForm={setForm} tags={tags} />
         </div>
@@ -671,7 +696,7 @@ function MemoEditForm({ form, setForm, groups, tags, tasks, panelMode, onCancel,
         {/* 富文本内容 */}
         <div className='flex-1 flex flex-col min-h-0'>
           <label className='text-xs font-medium text-gray-500 mb-1.5 block'>内容</label>
-          <div className='flex-1 min-h-[200px]'>
+          <div className='flex-1 min-h-0'>
             <RichEditor
               value={form.content}
               onChange={(val) =>
@@ -916,15 +941,21 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
   const [directionVal, setDirectionVal] = useState(memo.direction || '');
   const [tagIdsVal, setTagIdsVal] = useState(memo.tag_ids || []);
   const [contentVal, setContentVal] = useState(memo.content || '');
-  const [contentEditing, setContentEditing] = useState(false); // 内容是否处于编辑态
-  const [savingContent, setSavingContent] = useState(false); // 备忘切换时同步本地状态，并退出编辑态
+  const [saveStatus, setSaveStatus] = useState(''); // '' | 'saving' | 'saved'
+  const saveTimerRef = useRef(null);
+  const latestContentRef = useRef(memo.content || '');
+  // 备忘切换时同步本地状态
   useEffect(() => {
     setTitleVal(memo.title || '');
     setDirectionVal(memo.direction || '');
     setTagIdsVal(memo.tag_ids || []);
     setContentVal(memo.content || '');
-    setContentEditing(false);
+    setSaveStatus('');
+    latestContentRef.current = memo.content || '';
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
   }, [memo.id]);
+  // 组件卸载时清定时器
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
   const relatedTasks = (memo.related_task_ids || []).map((id) => tasks.find((t) => t.id === id)).filter(Boolean);
   const [urlTitle, setUrlTitle] = useState(null);
   const [urlLoading, setUrlLoading] = useState(false);
@@ -955,18 +986,21 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
     onFieldSave({
       tag_ids: newIds,
     });
-  }; // 内容保存
-  const handleContentSave = async () => {
-    setSavingContent(true);
-    await onFieldSave({
-      content: contentVal,
-    });
-    setSavingContent(false);
-    setContentEditing(false);
-  }; // 取消编辑内容
-  const handleContentCancel = () => {
-    setContentVal(memo.content || '');
-    setContentEditing(false);
+  }; // 内容自动保存（防抖 1.5s）
+  const handleContentChange = (val) => {
+    setContentVal(val);
+    latestContentRef.current = val;
+    setSaveStatus('saving');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await onFieldSave({ content: latestContentRef.current });
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(''), 2000);
+      } catch (err) {
+        setSaveStatus('');
+      }
+    }, 1500);
   }; // 用于 DirectionPicker/TagSelector 的 form/setForm 适配
   const fakeForm = {
     direction: directionVal,
@@ -996,8 +1030,8 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
             <Trash2 className='h-3.5 w-3.5' />
           </button>
         </div>
-        {/* 分组 + 标签（上下排列） */}
-        <div className='space-y-2.5 mt-2'>
+        {/* 分组 + 标签（同一行，紧凑展示已选） */}
+        <div className='flex items-center gap-2 flex-wrap mt-2'>
           <DirectionPicker form={fakeForm} setForm={fakeSetFormDirection} groups={groups} />
           <TagSelector form={fakeForm} setForm={fakeSetFormTags} tags={tags} onTagCreated={onTagCreated} />
         </div>
@@ -1045,33 +1079,11 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
         <div className='flex-1 flex flex-col min-h-0'>
           <div className='flex items-center justify-between mb-1.5'>
             <span className='text-xs font-medium text-gray-400'>内容</span>
-            {contentEditing ? (
-              <div className='flex items-center gap-1.5'>
-                <button onClick={handleContentCancel} className='text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-all'>
-                  取消
-                </button>
-                <button
-                  onClick={handleContentSave}
-                  disabled={savingContent}
-                  className='flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border-0 transition-all'
-                  style={{
-                    backgroundColor: '#bbea3b',
-                    color: '#2d4a00',
-                  }}
-                >
-                  <Check className='h-3 w-3' />
-                  {savingContent ? '保存中…' : '保存'}
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => setContentEditing(true)} className='flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-all'>
-                <Pencil className='h-3 w-3' />
-                编辑
-              </button>
-            )}
+            {saveStatus === 'saving' && <span className='text-xs text-gray-400'>保存中…</span>}
+            {saveStatus === 'saved' && <span className='text-xs text-green-500'>已保存</span>}
           </div>
-          <div className='flex-1 min-h-[200px]'>
-            <RichEditor key={`${memo.id}-${contentEditing ? 'edit' : 'view'}`} value={contentVal} onChange={(val) => setContentVal(val)} placeholder='写下备忘内容…' readOnly={!contentEditing} />
+          <div className='flex-1 min-h-0'>
+            <RichEditor key={memo.id} value={contentVal} onChange={handleContentChange} placeholder='写下备忘内容…' />
           </div>
         </div>
       </div>
