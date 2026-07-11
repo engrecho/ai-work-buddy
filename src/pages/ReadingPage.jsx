@@ -649,7 +649,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
               <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
             </button>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap" style={{ height: '30px' }}>
               {["all", "unread", "read"].map((f) => {
                 const countMap = {
                   all: filteredItems.length,
@@ -660,7 +660,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
                   <button
                     key={f}
                     onClick={() => setReadFilter(f)}
-                    className={`flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex-shrink-0 flex items-center gap-1 h-7 px-3 rounded-lg text-xs font-medium transition-colors ${
                       readFilter === f
                         ? "border-0"
                         : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
@@ -679,10 +679,10 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
             </div>
 
             {/* 平台过滤器 */}
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap" style={{ height: '30px' }}>
               <button
                 onClick={() => setPlatformFilter("all")}
-                className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`flex-shrink-0 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors ${
                   platformFilter === "all"
                     ? "bg-gray-900 text-white"
                     : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
@@ -698,7 +698,7 @@ const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
                   <button
                     key={k}
                     onClick={() => setPlatformFilter(k)}
-                    className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    className={`flex-shrink-0 flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors ${
                       active
                         ? "border-0"
                         : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
@@ -1434,6 +1434,13 @@ function ArticleRow({ item, tagMap, onToggleRead, onToggleStar, onDelete, onEdit
           >
             {item.title}
           </a>
+          <button
+            onClick={onCopy}
+            className='flex-shrink-0 p-0.5 rounded text-gray-300 hover:text-gray-500 transition-colors'
+            title='复制链接'
+          >
+            <Copy className='h-3.5 w-3.5' />
+          </button>
           <button
             onClick={onToggleStar}
             className={`flex-shrink-0 p-0.5 rounded transition-colors ${

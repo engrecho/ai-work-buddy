@@ -117,7 +117,7 @@ function GroupBadge({ direction, groupMap }) {
   if (group)
     return (
       <span
-        className='inline-flex items-center gap-1 px-1.5 h-5 rounded text-[10px] font-medium flex-shrink-0 border'
+        className='inline-flex items-center gap-1 px-1.5 h-5 rounded-full text-[10px] font-medium flex-shrink-0 border'
         style={{
           backgroundColor: group.color + '14',
           color: group.color,
@@ -808,11 +808,12 @@ function MemoCard({ memo, isActive, groupMap, tagMap, showGroup, onSelect }) {
       {/* 底部：分组 + 标签文字 + 修改日期（同一行，日期靠右） */}
       <div className='flex flex-wrap items-center gap-1 mt-1.5'>
         {showGroup && <GroupBadge direction={memo.direction} groupMap={groupMap} />}
-        {tagIds.slice(0, 3).map((tid) => {
+        {tagIds.slice(0, 3).map((tid, idx) => {
           const tag = tagMap[String(tid)];
           if (!tag) return null;
           return (
-            <span key={tid} className='text-[10px] font-medium flex-shrink-0' style={{ color: tag.color }}>
+            <span key={tid} className='text-[10px] font-medium flex-shrink-0 flex items-center gap-1' style={{ color: tag.color }}>
+              {idx > 0 && <span className='text-gray-300'>|</span>}
               {tag.name}
             </span>
           );
@@ -859,9 +860,54 @@ function RelatedTasksEditor({ relatedTaskIds = [], tasks = [], onGoToTask, onSav
 
   return (
     <div className='pt-3 border-t border-gray-50'>
-      <p className='text-xs text-gray-400 mb-2 flex items-center gap-1'>
-        <ZapIcon className='h-3 w-3' /> 关联任务
-      </p>
+      <div className='flex items-center justify-between mb-2'>
+        <p className='text-xs text-gray-400 flex items-center gap-1'>
+          <ZapIcon className='h-3 w-3' /> 关联任务
+        </p>
+        {/* 关联任务按钮放在同一行最右侧 */}
+        <div className='relative' ref={dropdownRef}>
+          <button
+            type='button'
+            onClick={() => setShowDropdown((v) => !v)}
+            className='flex items-center gap-1 h-6 px-2 rounded-md border border-dashed border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100 transition-colors text-[11px] text-gray-500'
+          >
+            <Plus className='h-2.5 w-2.5 flex-shrink-0' />
+            <span>关联</span>
+          </button>
+          {showDropdown && (
+            <div className='absolute z-30 right-0 mt-1 bg-white border border-gray-100 rounded-lg shadow-lg max-h-48 overflow-y-auto min-w-[200px]'>
+              <div className='px-2.5 py-1.5 border-b border-gray-50'>
+                <input
+                  type='text'
+                  value={search}
+                  autoFocus
+                  onChange={(e) => { setSearch(e.target.value); }}
+                  placeholder='搜索任务…'
+                  className='w-full text-xs bg-transparent outline-none text-gray-600 placeholder-gray-400'
+                  style={{ fontSize: '12px' }}
+                />
+              </div>
+              {availableTasks.length === 0 ? (
+                <div className='py-3 text-center text-xs text-gray-400'>
+                  {search ? '没有匹配的任务' : '暂无可关联的任务'}
+                </div>
+              ) : (
+                availableTasks.map((t) => (
+                  <button
+                    key={t.id}
+                    type='button'
+                    onMouseDown={(e) => { e.preventDefault(); handleAdd(t); }}
+                    className='w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-gray-50 transition-colors'
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.status === 'done' ? 'bg-green-400' : t.status === 'in_progress' ? 'bg-blue-400' : 'bg-gray-300'}`} />
+                    <span className='flex-1 truncate text-gray-700'>{t.title}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
       {/* 已关联任务列表 */}
       {relatedTasks.length > 0 && (
         <div className='space-y-1 mb-2'>
@@ -891,50 +937,6 @@ function RelatedTasksEditor({ relatedTaskIds = [], tasks = [], onGoToTask, onSav
           ))}
         </div>
       )}
-      {/* 关联任务按钮（点击展开搜索） */}
-      <div className='relative' ref={dropdownRef}>
-        <button
-          type='button'
-          onClick={() => setShowDropdown((v) => !v)}
-          className='flex items-center gap-1.5 h-7 px-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100 transition-colors text-xs text-gray-500'
-          style={{ fontSize: '12px' }}
-        >
-          <Plus className='h-3 w-3 flex-shrink-0' />
-          <span>关联任务</span>
-        </button>
-        {showDropdown && (
-          <div className='absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-100 rounded-lg shadow-lg max-h-48 overflow-y-auto'>
-            <div className='px-2.5 py-1.5 border-b border-gray-50'>
-              <input
-                type='text'
-                value={search}
-                autoFocus
-                onChange={(e) => { setSearch(e.target.value); }}
-                placeholder='搜索任务…'
-                className='w-full text-xs bg-transparent outline-none text-gray-600 placeholder-gray-400'
-                style={{ fontSize: '12px' }}
-              />
-            </div>
-            {availableTasks.length === 0 ? (
-              <div className='py-3 text-center text-xs text-gray-400'>
-                {search ? '没有匹配的任务' : '暂无可关联的任务'}
-              </div>
-            ) : (
-              availableTasks.map((t) => (
-                <button
-                  key={t.id}
-                  type='button'
-                  onMouseDown={(e) => { e.preventDefault(); handleAdd(t); }}
-                  className='w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-gray-50 transition-colors'
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.status === 'done' ? 'bg-green-400' : t.status === 'in_progress' ? 'bg-blue-400' : 'bg-gray-300'}`} />
-                  <span className='flex-1 truncate text-gray-700'>{t.title}</span>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -1022,9 +1024,16 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
   };
   return (
     <div className='flex flex-col h-full'>
-      {/* Header：标题内联编辑 + 删除 */}
+      {/* Header：分类badge + 标题内联编辑 + 删除 */}
       <div className='px-5 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0'>
-        <div className='flex items-start gap-2'>
+        <div className='flex items-center gap-2 mb-1.5'>
+          <DirectionPicker form={fakeForm} setForm={fakeSetFormDirection} groups={groups} />
+          <TagSelector form={fakeForm} setForm={fakeSetFormTags} tags={tags} onTagCreated={onTagCreated} />
+          <button onClick={onDelete} className='flex-shrink-0 p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors ml-auto' title='删除'>
+            <Trash2 className='h-3.5 w-3.5' />
+          </button>
+        </div>
+        <div className='flex items-center gap-2'>
           <input
             value={titleVal}
             onChange={(e) => setTitleVal(e.target.value)}
@@ -1032,16 +1041,8 @@ function MemoViewPanel({ memo, groupMap, tagMap, groups, tags, tasks, onFieldSav
             placeholder='备忘标题…'
             className='flex-1 text-base font-semibold text-gray-900 bg-transparent border-0 outline-none placeholder-gray-300 py-0 leading-snug focus:bg-gray-50 focus:px-2 focus:rounded-lg transition-all min-w-0'
           />
-          <button onClick={onDelete} className='flex-shrink-0 p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors mt-0.5' title='删除'>
-            <Trash2 className='h-3.5 w-3.5' />
-          </button>
         </div>
-        {/* 分组 + 标签（同一行，紧凑展示已选） */}
-        <div className='flex items-center gap-2 flex-wrap mt-2'>
-          <DirectionPicker form={fakeForm} setForm={fakeSetFormDirection} groups={groups} />
-          <TagSelector form={fakeForm} setForm={fakeSetFormTags} tags={tags} onTagCreated={onTagCreated} />
-        </div>
-        <div className='flex items-center gap-2 mt-1.5'>
+        <div className='flex items-center gap-2 mt-1'>
           <span className='text-xs text-gray-300'>
             {new Date(memo.created_at).toLocaleDateString('zh-CN', {
               year: 'numeric',

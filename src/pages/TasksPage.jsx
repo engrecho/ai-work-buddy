@@ -1261,6 +1261,40 @@ editContent
 </div>
 );
 
+// 可折叠字段（默认折叠，点击展开编辑）
+const CollapsibleField = ({ label, icon: Icon, children, onEdit, editContent, isEditing: fieldEditing }) => {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className='border-b border-gray-50 last:border-0 px-1 -mx-1'>
+      <div
+        className='flex items-center gap-2 py-2 cursor-pointer hover:bg-gray-50/80 rounded-lg transition-colors'
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className='flex items-center gap-1.5 w-24 flex-shrink-0'>
+          {Icon && <Icon className='h-3.5 w-3.5 text-gray-400 flex-shrink-0' />}
+          <span className='text-xs text-gray-400 truncate'>{label}</span>
+        </div>
+        <div className='flex-1 min-w-0'>
+          {children}
+        </div>
+        <ChevronDown className={`h-3 w-3 text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </div>
+      {expanded && (
+        <div className='pb-2 pl-[108px]'>
+          {fieldEditing ? editContent : (
+            <button
+              onClick={onEdit}
+              className='text-xs text-[#5a7a00] hover:underline'
+            >
+              点击编辑
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // 两列并排字段行
 const InlineFieldRow = ({ children }) => (
   <div className='flex border-b border-gray-50 last:border-0 divide-x divide-gray-50'>
@@ -2176,16 +2210,16 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
             </InlineFieldHalf>
           </InlineFieldRow>
 
-          {/* 主R */}
+          {/* 负责人 */}
           <InlineField
-            label='主R'
+            label='负责人'
             icon={User}
             onEdit={() => setEditingField('owner')}
             isEditing={editingField === 'owner'}
             editContent={
               <div>
                 <MemberPicker
-                  label='选择主R'
+                  label='选择负责人'
                   value={currentTask.owner_ids || []}
                   onChange={(v) =>
                     setCurrentTask((prev) => ({
@@ -2240,16 +2274,16 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
             )}
           </InlineField>
 
-          {/* 主S */}
+          {/* 协同人 */}
           <InlineField
-            label='主S'
+            label='协同人'
             icon={Users}
             onEdit={() => setEditingField('supporter')}
             isEditing={editingField === 'supporter'}
             editContent={
               <div>
                 <MemberPicker
-                  label='选择主S'
+                  label='选择协同人'
                   value={currentTask.supporter_ids || []}
                   onChange={(v) =>
                     setCurrentTask((prev) => ({
@@ -2392,66 +2426,8 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
             </div>
           </div>
 
-          {/* 关联人 */}
-          <InlineField
-            label='关联人'
-            icon={UserPlus}
-            onEdit={() => setEditingField('related_members')}
-            isEditing={editingField === 'related_members'}
-            editContent={
-              <div>
-                <MemberPicker
-                  label='选择关联人（非主R/主S）'
-                  value={currentTask.related_member_ids || []}
-                  onChange={(v) =>
-                    setCurrentTask((prev) => ({
-                      ...prev,
-                      related_member_ids: v,
-                    }))
-                  }
-                  members={members}
-                  onAddMember={onMemberAdded}
-                  multi
-                />
-                <div className='flex gap-2 mt-1'>
-                  <button
-                    onClick={() => {
-                      handleFieldSave({ related_member_ids: currentTask.related_member_ids || [] });
-                      setEditingField(null);
-                    }}
-                    className='text-xs px-2 py-1 rounded text-[#2d4a00]'
-                    style={{ backgroundColor: '#bbea3b' }}
-                  >
-                    完成
-                  </button>
-                  <button onClick={() => setEditingField(null)} className='text-xs text-gray-400 hover:text-gray-600'>
-                    取消
-                  </button>
-                </div>
-              </div>
-            }
-          >
-            {relatedMemberList.length > 0 ? (
-              <div className='flex flex-wrap gap-1'>
-                {relatedMemberList.map((m) => (
-                  <div key={m.id} className='flex items-center gap-1'>
-                    <div
-                      className='w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium text-white flex-shrink-0'
-                      style={{ backgroundColor: '#7c3aed' }}
-                    >
-                      {m.name.slice(0, 1)}
-                    </div>
-                    <span className='text-xs text-gray-700'>{m.name}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className='text-xs text-gray-300'>未设置</span>
-            )}
-          </InlineField>
-
-          {/* 前置任务 */}
-          <InlineField
+          {/* 前置任务（默认折叠） */}
+          <CollapsibleField
             label='前置任务'
             icon={GitBranch}
             onEdit={() => setEditingField('predecessors')}
@@ -2501,10 +2477,10 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
             ) : (
               <span className='text-xs text-gray-300'>未设置</span>
             )}
-          </InlineField>
+          </CollapsibleField>
 
-          {/* 后置任务 */}
-          <InlineField
+          {/* 后置任务（默认折叠） */}
+          <CollapsibleField
             label='后置任务'
             icon={GitBranch}
             onEdit={() => setEditingField('successors')}
@@ -2554,7 +2530,7 @@ export const TaskDetail = ({ task, tasks, members, tags, groups, onBack, onRefre
             ) : (
               <span className='text-xs text-gray-300'>未设置</span>
             )}
-          </InlineField>
+          </CollapsibleField>
         </div>
 
         {/* 二、任务描述 */}
