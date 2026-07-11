@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Plus, FileText, Link2, Trash2, Pencil, ExternalLink, Check, X, ChevronLeft, BookOpen, Search, ZapIcon, Clock, LayoutList, Layers, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { genId } from '@/lib/utils';
@@ -1099,7 +1099,8 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
   const [groups, setGroups] = useState([]); // task_groups（配置里的分组）
   const [tags, setTags] = useState([]); // task_tags（标签）
   const [tasks, setTasks] = useState([]);
-  const [filterTagId, setFilterTagId] = useState('all');
+  const [filterDirection, setFilterDirection] = useState('all');
+  const [filterTagIds, setFilterTagIds] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('time'); // "time" | "group"
   const [panelMode, setPanelMode] = useState(null);
@@ -1131,7 +1132,8 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
         })
         .order('created_at', {
           ascending: false,
-        }),
+        })
+        .limit(500),
       supabase.from('task_groups').select('*').order('created_at', {
         ascending: true,
       }),
@@ -1140,7 +1142,7 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
       }),
       supabase.from('tasks').select('id, title, status').order('created_at', {
         ascending: false,
-      }),
+      }).limit(200),
     ]);
     setMemos(m || []);
     setGroups(grp || []);
@@ -1157,15 +1159,16 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
       onInitialMemoConsumed?.();
     }
   }, [initialMemoId]); // groupMap / tagMap：key 统一使用字符串，避免数字/字符串类型不匹配
-  const groupMap = Object.fromEntries(groups.map((g) => [String(g.id), g]));
-  const tagMap = Object.fromEntries(tags.map((t) => [String(t.id), t]));
-  const sortByTime = (list) =>
+  const groupMap = useMemo(() => Object.fromEntries(groups.map((g) => [String(g.id), g])), [groups]);
+  const tagMap = useMemo(() => Object.fromEntries(tags.map((t) => [String(t.id), t])), [tags]);
+  const sortByTime = useCallback((list) =>
     [...list].sort((a, b) => {
       const ta = new Date(a.updated_at || a.created_at).getTime();
       const tb = new Date(b.updated_at || b.created_at).getTime();
       return tb - ta;
-    }); // 关键词过滤（不含分组筛选，供分组视图使用）
-  const searchFiltered = (() => {
+    }), []);
+  // 关键词过滤（不含分组筛选，供分组视图使用）
+  const searchFiltered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return memos;
     return memos.filter((m) => {
@@ -1175,14 +1178,22 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
         .includes(q);
       return titleMatch || contentMatch;
     });
-  })(); // 时间视图：分组筛选 + 搜索 + 排序
-  const filteredMemos = (() => {
+  }, [memos, searchQuery]);
+  // 时间视图：分组筛选 + 标签筛选 + 搜索 + 排序
+  const filteredMemos = useMemo(() => {
     let list = searchFiltered;
-    if (filterTagId === '__none__') list = list.filter((m) => !m.direction);
-    else if (filterTagId !== 'all') list = list.filter((m) => String(m.direction) === String(filterTagId));
+    if (filterDirection === '__none__') list = list.filter((m) => !m.direction);
+    else if (filterDirection !== 'all') list = list.filter((m) => String(m.direction) === String(filterDirection));
+    if (filterTagIds.length > 0) {
+      list = list.filter((m) => {
+        const mTagIds = (m.tag_ids || []).map(String);
+        return filterTagIds.some((tid) => mTagIds.includes(tid));
+      });
+    }
     return sortByTime(list);
-  })(); // 分组视图：只按搜索词过滤，不受 filterTagId 约束
-  const groupedMemos = (() => {
+  }, [searchFiltered, filterDirection, filterTagIds, sortByTime]);
+  // 分组视图：只按搜索词过滤，不受 filterDirection / filterTagIds 约束
+  const groupedMemos = useMemo(() => {
     const list = sortByTime(searchFiltered);
     const map = new Map();
     for (const m of list) {
@@ -1213,16 +1224,18 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
         items: map.get('__none__'),
       });
     return result;
-  })();
-  const usedGroupKeys = [
-    ...new Set(
-      memos
-        .map((m) => m.direction)
-        .filter(Boolean)
-        .map(String),
-    ),
-  ];
-  const usedGroups = usedGroupKeys.map((key) => groupMap[key]).filter(Boolean); // ── 表单操作 ─────────────────────────────────────────────────
+  }, [searchFiltered, groups, sortByTime]);
+  const usedGroups = useMemo(() => {
+    const keys = [
+      ...new Set(
+        memos
+          .map((m) => m.direction)
+          .filter(Boolean)
+          .map(String),
+      ),
+    ];
+    return keys.map((key) => groupMap[key]).filter(Boolean);
+  }, [memos, groupMap]); // ── 表单操作 ─────────────────────────────────────────────────
   const resetForm = useCallback(() => {
     setForm({
       title: '',
@@ -1500,36 +1513,27 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
               </Button>
             </div>
           </div>
-          {/* 第二行：快捷分组筛选 */}
+          {/* 分组筛选 */}
           <div className='flex gap-1.5 flex-wrap overflow-x-auto scrollbar-none pb-0.5'>
             <FilterBtn
-              active={filterTagId === 'all'}
-              onClick={() => {
-                setFilterTagId('all');
-                setSearchQuery('');
-              }}
-              label='全部'
+              active={filterDirection === 'all'}
+              onClick={() => { setFilterDirection('all'); setSearchQuery(''); }}
+              label='全部分组'
               count={memos.length}
             />
-            {usedGroups.map((g, __dnd_i) => (
+            {usedGroups.map((g) => (
               <FilterBtn
                 key={g.id}
-                active={filterTagId === String(g.id)}
-                onClick={() => {
-                  setFilterTagId(String(g.id));
-                  setSearchQuery('');
-                }}
+                active={filterDirection === String(g.id)}
+                onClick={() => { setFilterDirection(String(g.id)); setSearchQuery(''); }}
                 label={g.name}
                 count={memos.filter((m) => String(m.direction) === String(g.id)).length}
                 color={g.color}
               />
             ))}
             <FilterBtn
-              active={filterTagId === '__none__'}
-              onClick={() => {
-                setFilterTagId('__none__');
-                setSearchQuery('');
-              }}
+              active={filterDirection === '__none__'}
+              onClick={() => { setFilterDirection('__none__'); setSearchQuery(''); }}
               label='未分类'
               count={memos.filter((m) => !m.direction).length}
             />
@@ -1567,7 +1571,7 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
             ) : filteredMemos.length === 0 ? (
               <div className='flex flex-col items-center justify-center h-48 text-center px-4'>
                 <FileText className='h-8 w-8 text-gray-200 mb-2' />
-                <p className='text-xs text-gray-400'>{searchQuery.trim() ? `未找到含「${searchQuery.trim()}」的备忘` : filterTagId === 'all' ? '暂无备忘，点击「新建」开始' : '该分组暂无备忘'}</p>
+                <p className='text-xs text-gray-400'>{searchQuery.trim() ? `未找到含「${searchQuery.trim()}」的备忘` : filterDirection === 'all' && filterTagIds.length === 0 ? '暂无备忘，点击「新建」开始' : '没有符合条件的备忘'}</p>
                 {searchQuery.trim() && (
                   <button onClick={() => setSearchQuery('')} className='mt-2 text-xs text-blue-500 hover:underline'>
                     清除搜索
