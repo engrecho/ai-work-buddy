@@ -795,7 +795,6 @@ app.post('/api/batch', authMiddleware, async (req, res) => {
   if (queries.length > 10) {
     return res.json({ data: null, error: { message: '单次最多 10 条查询' } });
   }
-
   try {
     const results = await Promise.all(
       queries.map(async (q) => {

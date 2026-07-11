@@ -33,42 +33,29 @@
  * 行为：调用 video_extract.cjs 解析后，逐个下载 + 公众号生成 MD。
  *
  * 默认保存地址优先级：
- *   1) 环境变量 GV_OUTPUT
- *   2) 配置文件 ~/.all-platform-video-extract/config.json 中的 output_root
- *   3) <本仓库根目录>/downloads/
- *   4) 以上都不存在则自动引导运行 init_config.cjs 询问用户
+ *   1) 环境变量 GV_OUTPUT（服务端统一注入,优先级最高）
+ *   2) <本仓库根目录>/downloads/（独立运行时的 fallback）
  */
 
-const { execFileSync, spawnSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 
 const SKILL_DIR = path.resolve(__dirname, '..');
 const EXTRACT_SCRIPT = path.join(__dirname, 'video_extract.cjs');
-const CONFIG_FILE = path.join(os.homedir(), '.all-platform-video-extract', 'config.json');
-const NODE_BIN = process.env.GV_NODE || require('child_process').execSync('which node').toString().trim();
+const NODE_BIN = process.env.GV_NODE || process.execPath;
 
 const TITLE_MAX = 60;          // 标题部分最多 60 字符
 const DOWNLOAD_TIMEOUT = 60000; // 单文件下载 60s
 const MAX_CONCURRENCY = 4;
 
-function loadConfig() {
-  if (!fs.existsSync(CONFIG_FILE)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  } catch (_) {
-    return null;
-  }
-}
-
 function resolveOutputRoot() {
+  // 服务端统一通过 GV_OUTPUT 环境变量注入保存路径
   if (process.env.GV_OUTPUT) return process.env.GV_OUTPUT;
-  const cfg = loadConfig();
-  if (cfg && cfg.output_root) return cfg.output_root;
+  // 独立运行时的 fallback（生产环境不会走到这里）
   return path.join(SKILL_DIR, 'downloads');
 }
 
@@ -502,8 +489,7 @@ async function main() {
 
 目录命名：<平台>-<vid>-<标题截断60字>/
 
-首次使用：直接运行本脚本即可,如果未检测到配置,会自动引导填写保存地址。
-也可手动执行: node scripts/init_config.cjs
+注意：本脚本仅供服务端内部调用,需通过 GV_OUTPUT 环境变量指定保存目录。
 `);
     process.exit(0);
   }
@@ -513,18 +499,8 @@ async function main() {
     inputs = text.split('\n').map(s => s.trim()).filter(Boolean);
   }
 
-  // 首次运行:无任何配置来源时引导 init_config
-  if (!process.env.GV_OUTPUT && !loadConfig()) {
-    console.log('[init] 首次使用,引导填写默认保存地址与解析服务...');
-    const initScript = path.join(__dirname, 'init_config.cjs');
-    const r = spawnSync(NODE_BIN, [initScript], { stdio: 'inherit' });
-    if (r.status !== 0) {
-      console.error('初始化失败,请手动运行: node scripts/init_config.cjs');
-      process.exit(1);
-    }
-  }
-
-  // 重新计算一次(配置可能刚被 init 写入)
+  // 输出根目录(服务端统一通过 GV_OUTPUT 环境变量传入;
+  // 独立运行时 fallback 到默认地址,但生产场景必须由服务端 env 注入)
   OUTPUT_ROOT = resolveOutputRoot();
   fs.mkdirSync(OUTPUT_ROOT, { recursive: true });
   console.log(`输出根目录: ${OUTPUT_ROOT}`);

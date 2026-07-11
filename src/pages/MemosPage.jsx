@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Plus, FileText, Link2, Trash2, Pencil, ExternalLink, Check, X, ChevronLeft, BookOpen, Search, ZapIcon, Clock, LayoutList, Layers, AlertTriangle } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, batchQuery } from '@/integrations/supabase/client';
 import { genId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1122,7 +1122,7 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
   }, []);
   const fetchAll = useCallback(async () => {
     // 使用批量接口一次请求拉取所有数据，避免多请求串行延迟
-    const results = await supabase.batch([
+    const results = await batchQuery([
       { table: 'memos', filter: ['is:deleted_at:null'], order: ['updated_at:desc', 'created_at:desc'], limit: 500 },
       { table: 'task_groups', order: ['created_at:asc'] },
       { table: 'task_tags', order: ['created_at:asc'] },

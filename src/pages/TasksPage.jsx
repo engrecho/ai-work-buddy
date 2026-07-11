@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Search, MessageSquare, TrendingUp, Send, CheckCircle2, Trash2, Flag, ArrowLeft, Settings, X, ChevronDown, ChevronRight, Calendar, User, Users, Link2, Tag, ExternalLink, Filter, FolderOpen, AlertCircle, GitBranch, UserPlus, Megaphone, LayoutGrid, List, FileText, NotebookPen } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, batchQuery } from '@/integrations/supabase/client';
 import { applyStoredTaskGroups, applyStoredTaskExtra, genId, getStoredTaskGroups, getStoredTaskGroupAssignments, saveStoredTaskGroups, setStoredTaskGroupAssignment, setStoredTaskExtra } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -3779,7 +3779,7 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
   }, []);
   const fetchAll = async () => {
     // 使用批量接口一次请求拉取所有数据，避免多请求串行延迟
-    const results = await supabase.batch([
+    const results = await batchQuery([
       { table: 'tasks', order: ['updated_at:desc', 'due_date:desc'], limit: 500 },
       { table: 'task_members', order: ['created_at:asc'] },
       { table: 'task_tags', order: ['created_at:asc'] },

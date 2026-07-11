@@ -41,53 +41,26 @@ AI-Buddy 的设计哲学是"先 5 秒记下来，再慢慢串成线"——本 SK
 
 > 命中关键词时，即使没点名具体平台，也应走保存流程（自动解析链接归属平台）。
 
-## 快速开始
+## 前置条件（Agent 会话启动时校验）
 
 ### 1. 获取 API Key
 
-1. 登录 Buddy 网页版（<https://buddy.bajiaolu.cn>）
-2. 右上角头像 → **个人设置**
-3. 切到 **API Key** Tab
-4. 输入 Key 名称（如 `Claude SKILL`）→ **创建**
-5. **立即复制明文 Key**（关掉弹窗就再也看不到了！）
-
-Key 形如：`buddy_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
-
-> **如果找不到 Key 了**：在 API Key Tab 看不到明文（仅显示前缀），可以**撤销**旧 Key 再**创建**新的。运行 `node index.js where-is-key` 可随时查看配置文件位置。
-
-### 2. 安装与初始化
-
-```bash
-# 把整个 buddy-skill 目录复制到本地任意位置
-cp -r buddy-skill ~/tools/buddy-skill
-cd ~/tools/buddy-skill
-
-# 交互式初始化（输入 API Base URL 和 API Key）
-node index.js init
-```
-
-> **找不到配置怎么办**：CLI 启动时如果检测不到 `~/.buddy-skill/config.json`，会提示「未找到配置，请先运行: node index.js init」。运行 `node index.js where-is-key` 可以随时查看配置文件路径。
-
-### 3. 测试连接
-
 ```bash
 node index.js test
-# ✓ 连接成功
-# { "id": 1, "username": "yourname", "nickname": "你的昵称" }
 ```
 
-### 4. 开始使用
+| 返回 | 含义 | Agent 下一步 |
+|------|------|--------------|
+| `✓ 连接成功` | 配置有效 | 进入正常工作状态 |
+| `未找到配置` | 配置文件不存在 | 提示用户去 Buddy 网页生成 Key → 执行 `node index.js init` |
+| `401 Unauthorized` | Key 失效 | 同上 |
+| 网络错误 | API 不可达 | 告知用户 SKILL 当前不可用 |
 
-```bash
-# 列出未完成任务
-node index.js list-tasks --status todo
+### 配置说明
 
-# 创建任务
-node index.js add-task --title "完成 Q3 报告" --priority high --due 2026-07-10
-
-# 整理任务（先列计划、用户确认、再执行）
-node index.js organize-tasks archive-completed
-```
+- 配置文件：`~/.buddy-skill/config.json`（权限 600）
+- 字段：`api_base`（默认 `https://buddy.bajiaolu.cn/api/v1`）、`api_key`
+- Agent 绝不在对话中明文输出用户 Key
 
 ## 安全模型
 
@@ -398,34 +371,31 @@ buddy-skill/
 buddy-skill — AI-Buddy 官方 SKILL CLI
 
 用法：
-  node index.js init                      交互式初始化配置
-  node index.js test                      测试连接
-  node index.js whoami                    查看当前用户
-  node index.js list-task-groups          列出任务分组
-  node index.js list-tasks [options]      列出任务
-  node index.js get-task <id>             查看任务详情
-  node index.js add-task --title "..."    创建任务
+  node index.js init                       交互式初始化配置
+  node index.js test                       测试连接（Agent 会话启动时应首先调用）
+  node index.js whoami                     查看当前用户
+  node index.js list-task-groups           列出任务分组
+  node index.js list-tasks [options]       列出任务
+  node index.js get-task <id>              查看任务详情
+  node index.js add-task --title "..."     创建任务
   node index.js update-task <id> --field value
-  node index.js delete-task <id>          删除任务（需二次确认）
-  node index.js organize-tasks <strategy> 整理任务（先列计划）
-  node index.js list-memos                列出备忘
-  node index.js add-memo --content "..."  创建备忘
-  node index.js list-reading              列出阅读收藏
-  node index.js add-reading --url "..."   添加阅读收藏（支持 --is-offline true 标记离线，服务端自动下载）
-  node index.js update-reading <id>       更新阅读项（--is-offline true/false 开关离线）
-  node index.js extract-video "<分享文本>"  解析社媒内容(内置,返回原始信息,不下载)
-  node index.js where-is-key              显示配置文件位置
-  node index.js doctor                     环境诊断（检查 Node/配置/内置脚本/API）
-  node index.js --version                  显示版本号
+  node index.js delete-task <id>           删除任务（需二次确认）
+  node index.js organize-tasks <strategy>  整理任务（先列计划）
+  node index.js list-memos                 列出备忘
+  node index.js add-memo --content "..."   创建备忘
+  node index.js list-reading               列出阅读收藏
+  node index.js add-reading --url "..."    添加阅读收藏（支持 --is-offline true 标记离线，服务端自动下载）
+  node index.js update-reading <id>        更新阅读项（--is-offline true/false 开关离线）
+  node index.js extract-video "<分享文本>"   解析社媒内容（内置，返回原始信息，不下载）
+  node index.js self-update                手动触发版本检查与更新
+  node index.js where-is-key               显示配置文件位置
+  node index.js doctor                      环境诊断（检查 Node/配置/内置脚本/API）
+  node index.js --version                   显示版本号
 
 整理策略 strategy 取值：
   archive-completed      归档 30 天前已完成的任务
   set-priority-by-due    根据截止日期自动设置优先级
   clean-duplicates       归档重复任务
-
-社媒内容（抖音/B站/小红书/公众号等 1000+ 平台）— 本 SKILL 已内置解析,无需安装外部依赖：
-  node index.js extract-video "<分享文本或URL>"    仅解析,返回原始信息(不下载)
-  node index.js add-reading ... --is-offline true  保存并由服务端后台离线下载（download-video 已废弃）
 ```
 
 ## 故障排查

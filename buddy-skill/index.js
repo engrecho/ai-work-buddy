@@ -33,46 +33,31 @@ function printUsage() {
 buddy-skill — AI-Buddy 官方 SKILL CLI
 
 用法：
-  node index.js init                      交互式初始化配置
-  node index.js test                      测试连接
-  node index.js whoami                    查看当前用户
-  node index.js list-task-groups          列出任务分组
-  node index.js list-tasks [options]      列出任务
-  node index.js get-task <id>             查看任务详情
-  node index.js add-task --title "..."    创建任务
+  node index.js init                       交互式初始化配置
+  node index.js test                       测试连接（Agent 会话启动时应首先调用）
+  node index.js whoami                     查看当前用户
+  node index.js list-task-groups           列出任务分组
+  node index.js list-tasks [options]       列出任务
+  node index.js get-task <id>              查看任务详情
+  node index.js add-task --title "..."     创建任务
   node index.js update-task <id> --field value
-  node index.js delete-task <id>          删除任务（需二次确认）
-  node index.js organize-tasks <strategy> 整理任务（先列计划）
-  node index.js list-memos                列出备忘
-  node index.js add-memo --content "..."  创建备忘
-  node index.js list-reading              列出阅读收藏
-  node index.js add-reading --url "..."   添加阅读收藏（--is-offline true 自动离线下载）
-  node index.js update-reading <id>       更新阅读项（--is-offline true/false 开关离线）
-  node index.js where-is-key              显示配置文件位置
-  node index.js doctor                     环境诊断（检查 Node/配置/内置解析脚本/API）
-  node index.js --version                  显示版本号
+  node index.js delete-task <id>           删除任务（需二次确认）
+  node index.js organize-tasks <strategy>  整理任务（先列计划）
+  node index.js list-memos                 列出备忘
+  node index.js add-memo --content "..."   创建备忘
+  node index.js list-reading               列出阅读收藏
+  node index.js add-reading --url "..."    添加阅读收藏（--is-offline true 自动离线下载）
+  node index.js update-reading <id>        更新阅读项（--is-offline true/false 开关离线）
+  node index.js extract-video "<分享文本或URL>"  仅解析,返回原始信息(标题/封面/直链)
+  node index.js self-update                手动检查并安装新版本
+  node index.js where-is-key               显示配置文件位置
+  node index.js doctor                      环境诊断（检查 Node/配置/内置解析脚本/API）
+  node index.js --version                   显示版本号
 
 整理策略 strategy 取值：
   archive-completed      归档 30 天前已完成的任务
   set-priority-by-due    根据截止日期自动设置优先级
   clean-duplicates       归档重复任务
-
-示例：
-  node index.js list-tasks --status todo --limit 10
-  node index.js add-task --title "完成 Q3 报告" --priority high
-  node index.js organize-tasks archive-completed
-  node index.js delete-task 42
-
-社媒内容（抖音/B站/小红书/公众号等 1000+ 平台）— 本 SKILL 已内置解析,无需安装其他依赖：
-  node index.js extract-video "<分享文本或URL>"        仅解析,返回原始信息(标题/封面/直链)
-
-  保存社媒内容到阅读列表(推荐流程):
-    1. 先用 extract-video 解析拿到 title/platform/cover_url 等元信息
-    2. 再用 add-reading --url <url> --title ... --cover-url ... [--is-offline true] 保存
-    3. 传 --is-offline true 时,服务端会自动在后台离线下载,无需本地下载,也不会重复下载
-
-解析脚本内置在 buddy-skill/scripts/video_extract.cjs,零依赖,仅用 Node 内置模块。
-离线下载由 AI-Buddy 服务端统一处理（通过 is_offline 参数触发）,保存到服务端默认目录。
 `);
 }
 
@@ -124,33 +109,38 @@ async function downloadAndExtract(url, targetDir) {
   }
 }
 
-async function selfUpdateCheck() {
-  // 1 小时内只检查一次,兼顾及时更新与避免频繁请求网络
+/**
+ * 自更新检查
+ * @param {boolean} force - true 则跳过 1 小时缓存（用户主动触发）
+ * @returns {Promise<string|null>} - 有新版本时返回新版本号，否则返回 null
+ */
+async function selfUpdateCheck(force = false) {
   const cacheFile = path.join(os.homedir(), '.buddy_skill_update_check');
   const now = Date.now();
-  try {
-    if (fs.existsSync(cacheFile)) {
-      const last = Number(fs.readFileSync(cacheFile, 'utf8'));
-      if (now - last < 3600 * 1000) return;
-    }
-  } catch { /* ignore */ }
+  if (!force) {
+    try {
+      if (fs.existsSync(cacheFile)) {
+        const last = Number(fs.readFileSync(cacheFile, 'utf8'));
+        if (now - last < 3600 * 1000) return null;
+      }
+    } catch { /* ignore */ }
+  }
   try {
     fs.writeFileSync(cacheFile, String(now));
   } catch { /* ignore */ }
 
   try {
     const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return;
+    if (!res.ok) return null;
     const remoteVersion = (await res.text()).trim();
-    if (compareVersion(remoteVersion, VERSION) <= 0) return; // 本地已是最新
+    if (compareVersion(remoteVersion, VERSION) <= 0) return null;
 
     console.log(`发现 buddy-skill 新版本: ${VERSION} → ${remoteVersion}，正在自动更新...`);
     await downloadAndExtract(UPDATE_URL, __dirname);
-    console.log(`✓ 已更新到 ${remoteVersion}。`);
-    console.log(`  若本次更新涉及 SKILL.md / prompts.js（触发词或离线下载规则变化），请在 Agent 中【重新加载本 skill 会话】以生效，然后重新运行上一条命令。`);
-    process.exit(0);
+    return remoteVersion;
   } catch (err) {
     if (process.env.DEBUG) console.error('[self-update]', err.message);
+    return null;
   }
 }
 
@@ -491,20 +481,16 @@ async function cmdExtractVideo(flags) {
   }
 }
 
-// ── 下载/离线（已废弃）──
-// 旧的 download-video 命令已废弃，新流程：add-reading 传 --is-offline true
-async function cmdDownloadVideo(flags) {
-  const input = flags._positional?.[0] || flags.input;
-  if (!input) {
-    console.error('✗ download-video 命令已废弃。新流程：');
-    console.error('  1. node index.js extract-video "<分享文本或URL>"   # 本地解析');
-    console.error('  2. node index.js add-reading --url <url> --title "..." --cover-url "..." --is-offline true');
-    console.error('  传 --is-offline true 时，服务端会自动在后台离线下载，无需本地下载。');
-    process.exit(1);
+// ── 手动自更新 ──
+async function cmdSelfUpdate(force = false) {
+  console.log('正在检查更新...');
+  const remoteVersion = await selfUpdateCheck(true);
+  if (remoteVersion) {
+    console.log(`✓ 已更新到 ${remoteVersion}。`);
+    console.log('  若本次更新涉及 SKILL.md / 触发词或离线规则变化，请在 Agent 中【重新加载本 skill 会话】后重新运行上一条命令。');
+  } else {
+    console.log(`已是最新版本 ${VERSION}`);
   }
-  console.error('⚠ download-video 命令已废弃，改为通过 add-reading --is-offline true 触发离线下载。');
-  console.error('  即：先用 extract-video 本地解析，再 add-reading 时传 --is-offline true，后端自动处理。');
-  process.exit(1);
 }
 
 // ── 更新阅读项（可修改 is_offline 开启/关闭离线，或其他字段） ──
@@ -600,8 +586,20 @@ async function main() {
     return cmdDoctor();
   }
 
-  // 自动更新检查：落后则下载更新(跳过 doctor/--version/help)
-  await selfUpdateCheck();
+  // 自更新命令：显式触发，不走自动检查
+  if (command === 'self-update') {
+    return cmdSelfUpdate();
+  }
+
+  // 自动更新检查：静默，仅在有新版本时提示；跳过 doctor/--version/help
+  if (!['doctor', '--version', '-v'].includes(command)) {
+    const updated = await selfUpdateCheck(false);
+    if (updated) {
+      console.log(`✓ 已自动更新到 ${updated}。`);
+      console.log('  若本次更新涉及 SKILL.md / 触发词或离线规则变化，请在 Agent 中【重新加载本 skill 会话】后重新运行上一条命令。');
+      process.exit(0);
+    }
+  }
 
   const flags = parseFlags(args.slice(1));
 
@@ -623,7 +621,6 @@ async function main() {
       case 'add-reading': return cmdAddReading(flags);
       case 'update-reading': return cmdUpdateReading(flags);
       case 'extract-video': return cmdExtractVideo(flags);
-      case 'download-video': return cmdDownloadVideo(flags);
       case 'where-is-key': return cmdWhereIsKey();
       default:
         console.error(`✗ 未知命令: ${command}`);

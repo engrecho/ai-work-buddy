@@ -6,7 +6,7 @@ import {
   Pencil, Copy, FolderOpen, RefreshCw, FileVideo, FileImage,
   FileAudio, FileCode2, ChevronRight, Eye,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, batchQuery } from "@/integrations/supabase/client";
 import { genId } from "@/lib/utils";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -176,7 +176,7 @@ const ReadingPage = () => {
     // 批量获取：一次请求拉取阅读列表 + 标签
     (async () => {
       setLoading(true);
-      const results = await supabase.batch([
+      const results = await batchQuery([
         { table: 'reading_items', select: 'id,url,platform,title,summary,cover_url,category,is_read,is_starred,is_offline,offline_path,tags,created_at,deleted_at', filter: ['is:deleted_at:null'], order: ['created_at:desc'], limit: 200 },
         { table: 'task_tags', order: ['created_at:asc'] },
       ]);

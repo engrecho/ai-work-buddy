@@ -60,10 +60,23 @@ Key 形如：`buddy_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ### 2. 安装 SKILL
 
+> ⚠️ **SKILL 必须安装在 Agent 能发现的位置**。不同平台的 Agent 有各自的 skills 发现目录。
+
 ```bash
-# 把整个 buddy-skill 目录复制到本地任意位置
-cp -r buddy-skill ~/tools/buddy-skill
-cd ~/tools/buddy-skill
+# CatPaw / 通用 Agent（推荐，全局可用）
+cp -r buddy-skill ~/.agents/skills/buddy-skill
+
+# Cursor
+cp -r buddy-skill ~/.cursor/skills/buddy-skill
+
+# Codex (OpenAI)
+cp -r buddy-skill ~/.codex/skills/buddy-skill
+```
+
+安装后进入目录再初始化：
+
+```bash
+cd ~/.agents/skills/buddy-skill  # 对应上面选择的路径
 ```
 
 无需 `npm install`，全部使用 Node.js 内置模块。
@@ -308,8 +321,7 @@ buddy-skill/
 │   └── prompts.js           # AI Prompt 模板
 ├── scripts/
 │   ├── video_extract.cjs    # 内置社媒解析（零依赖，CLI 的 extract-video 与服务端共用）
-│   ├── download_videos.cjs  # ⚠️ 服务端内部下载脚本，被 server/extract.js 实际调用（download-video 命令的最终执行者），不可删除
-│   └── init_config.cjs      # 服务端配置初始化（被 download_videos.cjs 调用）
+│   └── download_videos.cjs  # ⚠️ 服务端内部下载脚本，被 server/extract.js 实际调用，不可删除
 ├── tools/
 │   ├── organize.js          # 整理任务（含 plan-then-confirm）
 │   └── confirm.js           # 确认机制（格式化展示给用户）

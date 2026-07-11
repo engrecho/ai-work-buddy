@@ -265,7 +265,7 @@ class QueryBuilder {
  * @param {Array<{table: string, select?: string, filter?: string[], order?: string[], limit?: number}>} queries
  * @returns {Promise<Array<{data: any[], error: null} | {data: null, error: {message: string}}>>}
  */
-async function batchQuery(queries) {
+export async function batchQuery(queries) {
   const token = getAuthToken();
   const options = {
     method: 'POST',
@@ -296,5 +296,6 @@ export const supabase = {
   from(table) {
     return new QueryBuilder(table);
   },
-  batch: batchQuery,
 };
+
+
