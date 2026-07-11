@@ -794,6 +794,9 @@ function MemoCard({ memo, isActive, groupMap, tagMap, showGroup, onSelect }) {
     : new Date(displayTime).toLocaleDateString('zh-CN', {
         month: 'numeric',
         day: 'numeric',
+      }) + ' ' + new Date(displayTime).toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
       }); // 标签列表
   const tagIds = memo.tag_ids || [];
   return (
@@ -802,14 +805,19 @@ function MemoCard({ memo, isActive, groupMap, tagMap, showGroup, onSelect }) {
       <p className={`text-sm font-medium leading-snug truncate ${isActive ? 'text-[#2d4a00]' : 'text-gray-800'}`}>{title}</p>
       {/* 正文摘要 */}
       {body && <p className='text-xs text-gray-400 mt-0.5 line-clamp-2 leading-relaxed'>{body}</p>}
-      {/* 底部：分组 + 标签 + 时间（同一行，时间靠右） */}
+      {/* 底部：分组 + 标签文字 + 修改日期（同一行，日期靠右） */}
       <div className='flex flex-wrap items-center gap-1 mt-1.5'>
         {showGroup && <GroupBadge direction={memo.direction} groupMap={groupMap} />}
-        {tagIds.slice(0, 2).map((tid, __dnd_i) => (
-          <TagBadge key={tid} tagId={tid} tagMap={tagMap} />
-        ))}
-        {tagIds.length > 2 && <span className='text-xs text-gray-400'>+{tagIds.length - 2}</span>}
-        <span className='ml-auto text-xs text-gray-400 flex items-center gap-0.5 flex-shrink-0'>
+        {tagIds.slice(0, 3).map((tid) => {
+          const tag = tagMap[String(tid)];
+          if (!tag) return null;
+          return (
+            <span key={tid} className='text-[10px] font-medium flex-shrink-0' style={{ color: tag.color }}>
+              {tag.name}
+            </span>
+          );
+        })}
+        <span className='ml-auto text-[10px] text-gray-400 flex items-center gap-0.5 flex-shrink-0'>
           <Clock className='h-2.5 w-2.5' />
           {todayStr}
         </span>
@@ -883,26 +891,30 @@ function RelatedTasksEditor({ relatedTaskIds = [], tasks = [], onGoToTask, onSav
           ))}
         </div>
       )}
-      {/* 搜索添加任务 */}
+      {/* 关联任务按钮（点击展开搜索） */}
       <div className='relative' ref={dropdownRef}>
-        <div className='flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-dashed border-gray-200 bg-gray-50 hover:border-gray-300 transition-colors'>
-          <Plus className='h-3 w-3 text-gray-400 flex-shrink-0' />
-          <input
-            type='text'
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); }}
-            onFocus={() => setShowDropdown(true)}
-            placeholder='搜索并关联任务…'
-            className='flex-1 text-xs bg-transparent outline-none text-gray-600 placeholder-gray-400'
-          />
-          {search && (
-            <button type='button' onClick={() => { setSearch(''); setShowDropdown(false); }}>
-              <X className='h-3 w-3 text-gray-400 hover:text-gray-600' />
-            </button>
-          )}
-        </div>
+        <button
+          type='button'
+          onClick={() => setShowDropdown((v) => !v)}
+          className='flex items-center gap-1.5 h-7 px-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100 transition-colors text-xs text-gray-500'
+          style={{ fontSize: '12px' }}
+        >
+          <Plus className='h-3 w-3 flex-shrink-0' />
+          <span>关联任务</span>
+        </button>
         {showDropdown && (
           <div className='absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-100 rounded-lg shadow-lg max-h-48 overflow-y-auto'>
+            <div className='px-2.5 py-1.5 border-b border-gray-50'>
+              <input
+                type='text'
+                value={search}
+                autoFocus
+                onChange={(e) => { setSearch(e.target.value); }}
+                placeholder='搜索任务…'
+                className='w-full text-xs bg-transparent outline-none text-gray-600 placeholder-gray-400'
+                style={{ fontSize: '12px' }}
+              />
+            </div>
             {availableTasks.length === 0 ? (
               <div className='py-3 text-center text-xs text-gray-400'>
                 {search ? '没有匹配的任务' : '暂无可关联的任务'}
@@ -1272,16 +1284,14 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
       }
     }
   }; // 即点即改：单字段保存（用于查看面板内联编辑）
-  // 只有保存内容（content）时才更新 updated_at，避免标题/分组/标签修改导致列表排序跳动
+  // 每次保存都更新 updated_at，确保列表按修改时间排序正确
   const handleFieldSave = useCallback(
     async (patch) => {
       if (!activeMemo) return;
       const dbPatch = {
         ...patch,
+        updated_at: new Date().toISOString(),
       };
-      if ('content' in patch) {
-        dbPatch.updated_at = new Date().toISOString();
-      }
       const { data } = await supabase.from('memos').update(dbPatch).eq('id', activeMemo.id).select().single();
       const updated = data || {
         ...activeMemo,
