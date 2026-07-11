@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Plus, FileText, Link2, Trash2, Pencil, ExternalLink, Check, X, ChevronLeft, BookOpen, Search, ZapIcon, Clock, LayoutList, Layers, AlertTriangle } from 'lucide-react';
+import { Plus, FileText, Link2, Trash2, ExternalLink, Check, X, ChevronLeft, BookOpen, Search, ZapIcon, Clock, LayoutList, Layers, AlertTriangle } from 'lucide-react';
 import { supabase, batchQuery } from '@/integrations/supabase/client';
 import { genId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -94,7 +94,7 @@ function FilterBtn({ active, onClick, label, count, color }) {
   return (
     <button
       onClick={onClick}
-      className={`text-xs px-2.5 py-1 rounded-full border transition-all font-medium flex-shrink-0 ${active && !color ? 'border-[#bbea3b] bg-[#f0fcd0] text-[#4a6800]' : !active ? 'border-gray-200 bg-white text-gray-500 hover:border-gray-300' : ''}`}
+      className={`text-[11px] h-6 px-2 rounded-full border transition-all font-medium flex-shrink-0 inline-flex items-center ${active && !color ? 'border-[#bbea3b] bg-[#f0fcd0] text-[#4a6800]' : !active ? 'border-gray-200 bg-white text-gray-500 hover:border-gray-300' : ''}`}
       style={
         active && color
           ? {
@@ -109,8 +109,7 @@ function FilterBtn({ active, onClick, label, count, color }) {
       {count !== undefined && <span className='ml-1 opacity-60'>{count}</span>}
     </button>
   );
-} // ── 分组 Badge ────────────────────────────────────────────────────
-// 样式：圆角胶囊（rounded-full）+ 彩色圆点 + 彩色半透明背景，视觉更饱满
+} // ── 分组 Badge（列表卡片用，浅底+圆点，统一小尺寸）──────────────
 
 function GroupBadge({ direction, groupMap }) {
   const key = direction != null && direction !== '' ? String(direction) : null;
@@ -118,43 +117,39 @@ function GroupBadge({ direction, groupMap }) {
   if (group)
     return (
       <span
-        className='inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 border'
+        className='inline-flex items-center gap-1 px-1.5 h-5 rounded text-[10px] font-medium flex-shrink-0 border'
         style={{
-          backgroundColor: group.color + '1a',
+          backgroundColor: group.color + '14',
           color: group.color,
-          borderColor: group.color + '55',
+          borderColor: group.color + '44',
         }}
       >
         <span
           className='w-1.5 h-1.5 rounded-full flex-shrink-0'
-          style={{
-            backgroundColor: group.color,
-          }}
+          style={{ backgroundColor: group.color }}
         />
         {group.name}
       </span>
     );
-  if (key) return <span className='inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 border border-gray-200 flex-shrink-0'>分组#{key.slice(-4)}</span>;
+  if (key) return <span className='inline-flex items-center px-1.5 h-5 rounded text-[10px] bg-gray-100 text-gray-500 border border-gray-200 flex-shrink-0'>分组#{key.slice(-4)}</span>;
   return null;
-} // ── 标签 Badge ────────────────────────────────────────────────────
-// 样式：小圆角（rounded）+ 「#」前缀 + 纯色细边框 + 纯白背景，与分组明显区分
+} // ── 标签 Badge（列表卡片用，浅底+彩色边框，统一小尺寸，无 # 前缀）──
 
 function TagBadge({ tagId, tagMap }) {
   const tag = tagMap[String(tagId)];
   if (!tag) return null;
   return (
     <span
-      className='inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium flex-shrink-0 border bg-white'
+      className='inline-flex items-center px-1.5 h-5 rounded text-[10px] font-medium flex-shrink-0 border bg-white'
       style={{
         color: tag.color,
-        borderColor: tag.color + '66',
+        borderColor: tag.color + '55',
       }}
     >
-      <span className='opacity-50 font-normal'>#</span>
       {tag.name}
     </span>
   );
-} // ── 分组选择器（只显示已选 + 弹出面板选择）──────────────
+} // ── 分组选择器（badge 整体可点击弹出选择，无铅笔按钮）──────────────
 
 function DirectionPicker({ form, setForm, groups }) {
   const [open, setOpen] = useState(false);
@@ -177,27 +172,25 @@ function DirectionPicker({ form, setForm, groups }) {
 
   return (
     <div className='relative' ref={ref}>
-      <div className='flex items-center gap-1.5'>
-        {selectedGroup ? (
-          <span
-            className='inline-flex items-center px-2.5 h-6 rounded-md text-xs font-medium text-white flex-shrink-0'
-            style={{ backgroundColor: selectedGroup.color }}
-          >
-            {selectedGroup.name}
-          </span>
-        ) : (
-          <span className='inline-flex items-center px-2.5 h-6 rounded-md text-xs font-medium bg-gray-100 text-gray-400 flex-shrink-0'>
-            未分类
-          </span>
+      <button
+        type='button'
+        onClick={() => setOpen((v) => !v)}
+        className='inline-flex items-center gap-1 px-1.5 h-5 rounded text-[10px] font-medium flex-shrink-0 border transition-all hover:opacity-80'
+        style={selectedGroup ? {
+          backgroundColor: selectedGroup.color + '14',
+          color: selectedGroup.color,
+          borderColor: selectedGroup.color + '44',
+        } : {
+          backgroundColor: '#f3f4f6',
+          color: '#9ca3af',
+          borderColor: '#e5e7eb',
+        }}
+      >
+        {selectedGroup && (
+          <span className='w-1.5 h-1.5 rounded-full flex-shrink-0' style={{ backgroundColor: selectedGroup.color }} />
         )}
-        <button
-          type='button'
-          onClick={() => setOpen((v) => !v)}
-          className='inline-flex items-center justify-center w-6 h-6 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0'
-        >
-          <Pencil className='h-3 w-3' />
-        </button>
-      </div>
+        {selectedGroup ? selectedGroup.name : '未分类'}
+      </button>
       {open && (
         <div className='absolute top-full left-0 mt-1 z-50 p-1.5 rounded-lg border border-gray-100 bg-white shadow-lg min-w-[120px]'>
           <button
@@ -287,15 +280,15 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
 
   return (
     <div className='relative' ref={ref}>
-      <div className='flex items-center gap-1.5 flex-wrap'>
+      <div className='flex items-center gap-1 flex-wrap'>
         {selectedTags.length === 0 && (
-          <span className='text-xs text-gray-400 h-6 flex items-center'>无标签</span>
+          <span className='text-[10px] text-gray-400 h-5 flex items-center'>无标签</span>
         )}
         {selectedTags.map((t) => (
           <span
             key={t.id}
-            className='inline-flex items-center px-2.5 h-6 rounded-md text-xs font-medium text-white flex-shrink-0'
-            style={{ backgroundColor: t.color }}
+            className='inline-flex items-center px-1.5 h-5 rounded text-[10px] font-medium flex-shrink-0 border bg-white cursor-default'
+            style={{ color: t.color, borderColor: t.color + '55' }}
           >
             {t.name}
           </span>
@@ -303,9 +296,10 @@ function TagSelector({ form, setForm, tags, onTagCreated }) {
         <button
           type='button'
           onClick={() => setOpen((v) => !v)}
-          className='inline-flex items-center justify-center w-6 h-6 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0'
+          className='inline-flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0 border border-gray-200 border-dashed'
+          title='管理标签'
         >
-          <Pencil className='h-3 w-3' />
+          <Plus className='h-2.5 w-2.5' />
         </button>
       </div>
       {open && (
@@ -1220,7 +1214,12 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
       ),
     ];
     return keys.map((key) => groupMap[key]).filter(Boolean);
-  }, [memos, groupMap]); // ── 表单操作 ─────────────────────────────────────────────────
+  }, [memos, groupMap]);
+  // 已使用的标签（用于筛选区展示）
+  const usedTags = useMemo(() => {
+    const ids = [...new Set(memos.flatMap((m) => m.tag_ids || []).map(String))];
+    return ids.map((id) => tagMap[id]).filter(Boolean);
+  }, [memos, tagMap]); // ── 表单操作 ─────────────────────────────────────────────────
   const resetForm = useCallback(() => {
     setForm({
       title: '',
@@ -1442,44 +1441,43 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
       {/* PC 主体 */}
       <div className='flex-1 overflow-hidden flex flex-col'>
         {/* 顶部栏 */}
-        <div className='flex-shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 pt-2.5 pb-2 space-y-2'>
-          {/* 第一行：搜索框 + 视图切换 + 新建按钮 */}
-          <div className='gap-2 justify-end items-center flex flex-row'>
-            {/* 搜索框（紧凑） */}
+        <div className='flex-shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 pt-2 pb-2 space-y-1.5'>
+          {/* 第一行：视图切换 │ 搜索 │ 新建 — 三组用竖线分隔 */}
+          <div className='flex items-center gap-2'>
+            {/* 组1：视图切换 */}
             <div className='flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5 flex-shrink-0'>
-              <button title='按修改时间' onClick={() => setViewMode('time')} className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${viewMode === 'time' ? 'bg-white text-gray-800 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+              <button title='按修改时间' onClick={() => setViewMode('time')} className={`flex items-center gap-1 h-6 px-2 rounded-md text-xs transition-all ${viewMode === 'time' ? 'bg-white text-gray-800 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
                 <Clock className='h-3 w-3' />
                 <span>时间</span>
               </button>
-              <button title='按分组展示' onClick={() => setViewMode('group')} className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all ${viewMode === 'group' ? 'bg-white text-gray-800 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+              <button title='按分组展示' onClick={() => setViewMode('group')} className={`flex items-center gap-1 h-6 px-2 rounded-md text-xs transition-all ${viewMode === 'group' ? 'bg-white text-gray-800 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
                 <Layers className='h-3 w-3' />
                 <span>分组</span>
               </button>
             </div>
-            {/* 新建按钮 + 搜索框（靠右） */}
+            {/* 分隔线 */}
+            <div className='w-px h-4 bg-gray-200 flex-shrink-0' />
+            {/* 组2：搜索 */}
+            <div className='relative flex-1 max-w-[200px]'>
+              <Search className='absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none' />
+              <input
+                type='text'
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder='搜索…'
+                className='h-7 w-full pl-6 pr-6 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#bbea3b] focus:border-[#bbea3b] transition-colors'
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className='absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'>
+                  <X className='h-3 w-3' />
+                </button>
+              )}
+            </div>
+            {/* 组3：新建（靠右） */}
             <div className='ml-auto flex items-center gap-1.5'>
-              {/* 搜索框 */}
-              <div className='relative flex-1 md:flex-initial md:flex-shrink-0'>
-                <Search className='absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none' />
-                <input
-                  type='text'
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder='搜索…'
-                  className='h-7 pl-6 pr-6 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#bbea3b] focus:border-[#bbea3b] transition-colors w-full md:w-[160px]'
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className='absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'>
-                    <X className='h-3 w-3' />
-                  </button>
-                )}
-              </div>
               <Button
                 className='flex-shrink-0 border-0 h-7 text-xs px-3 hidden md:inline-flex'
-                style={{
-                  backgroundColor: '#bbea3b',
-                  color: '#2d4a00',
-                }}
+                style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}
                 onClick={openNew}
               >
                 <Plus className='h-3.5 w-3.5 mr-1' />
@@ -1487,10 +1485,7 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
               </Button>
               <Button
                 className='flex-shrink-0 border-0 h-7 text-xs px-3 md:hidden'
-                style={{
-                  backgroundColor: '#bbea3b',
-                  color: '#2d4a00',
-                }}
+                style={{ backgroundColor: '#bbea3b', color: '#2d4a00' }}
                 onClick={openNewMobile}
               >
                 <Plus className='h-3.5 w-3.5 mr-1' />
@@ -1498,30 +1493,62 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
               </Button>
             </div>
           </div>
-          {/* 分组筛选 */}
-          <div className='flex gap-1.5 flex-wrap overflow-x-auto scrollbar-none pb-0.5'>
-            <FilterBtn
-              active={filterDirection === 'all'}
-              onClick={() => { setFilterDirection('all'); setSearchQuery(''); }}
-              label='全部分组'
-              count={memos.length}
-            />
-            {usedGroups.map((g) => (
+          {/* 第二行：分组筛选 │ 标签筛选 — 两组用竖线分隔 */}
+          <div className='flex items-center gap-2 flex-wrap overflow-x-auto scrollbar-none'>
+            {/* 组1：分组筛选 */}
+            <div className='flex items-center gap-1.5 flex-wrap'>
+              <span className='text-[10px] text-gray-400 font-medium flex-shrink-0'>分组</span>
               <FilterBtn
-                key={g.id}
-                active={filterDirection === String(g.id)}
-                onClick={() => { setFilterDirection(String(g.id)); setSearchQuery(''); }}
-                label={g.name}
-                count={memos.filter((m) => String(m.direction) === String(g.id)).length}
-                color={g.color}
+                active={filterDirection === 'all'}
+                onClick={() => { setFilterDirection('all'); }}
+                label='全部'
+                count={memos.length}
               />
-            ))}
-            <FilterBtn
-              active={filterDirection === '__none__'}
-              onClick={() => { setFilterDirection('__none__'); setSearchQuery(''); }}
-              label='未分类'
-              count={memos.filter((m) => !m.direction).length}
-            />
+              {usedGroups.map((g) => (
+                <FilterBtn
+                  key={g.id}
+                  active={filterDirection === String(g.id)}
+                  onClick={() => { setFilterDirection(String(g.id)); }}
+                  label={g.name}
+                  count={memos.filter((m) => String(m.direction) === String(g.id)).length}
+                  color={g.color}
+                />
+              ))}
+              <FilterBtn
+                active={filterDirection === '__none__'}
+                onClick={() => { setFilterDirection('__none__'); }}
+                label='未分类'
+                count={memos.filter((m) => !m.direction).length}
+              />
+            </div>
+            {/* 分隔线（仅当有标签时显示） */}
+            {usedTags.length > 0 && <div className='w-px h-4 bg-gray-200 flex-shrink-0' />}
+            {/* 组2：标签筛选 */}
+            {usedTags.length > 0 && (
+              <div className='flex items-center gap-1.5 flex-wrap'>
+                <span className='text-[10px] text-gray-400 font-medium flex-shrink-0'>标签</span>
+                <FilterBtn
+                  active={filterTagIds.length === 0}
+                  onClick={() => setFilterTagIds([])}
+                  label='全部'
+                />
+                {usedTags.map((t) => (
+                  <FilterBtn
+                    key={t.id}
+                    active={filterTagIds.includes(String(t.id))}
+                    onClick={() => {
+                      setFilterTagIds((prev) =>
+                        prev.includes(String(t.id))
+                          ? prev.filter((x) => x !== String(t.id))
+                          : [...prev, String(t.id)]
+                      );
+                    }}
+                    label={t.name}
+                    color={t.color}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
