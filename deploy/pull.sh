@@ -55,9 +55,11 @@ cd "$PROJECT_DIR/server"
 yarn install --silent
 cd "$PROJECT_DIR"
 
-# 5. 重启后端服务（必须用配置文件 reload + --update-env，否则 ecosystem 的 env 不会注入进程）
+# 5. 重启后端服务
+# 注意：cluster 模式下 pm2 reload 可能缓存旧代码，必须用 delete + start 彻底重启
 log "[5/8] 重启 PM2 后端服务..."
-pm2 reload ecosystem.config.cjs --update-env 2>/dev/null || pm2 start ecosystem.config.cjs
+pm2 delete ai-buddy-api 2>/dev/null || true
+pm2 start ecosystem.config.cjs --update-env
 pm2 save
 
 # 6. 增量 SQL 迁移（如果存在）：只跑标记为 migrate-*.sql 且尚未执行过的

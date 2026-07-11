@@ -5,7 +5,7 @@ description: AI-Buddy 的官方 SKILL——让 AI 助手通过 API Key 查询、
 
 # buddy-skill
 
-AI-Buddy 官方 SKILL——把 AI-Buddy 里的任务、备忘、阅读收藏、随记交给 Claude / GPT 等 LLM，让它真正成为你的工作搭档。
+AI-Buddy 官方 SKILL——把 AI-Buddy 里的任务、备忘、阅读收藏、随记交给 Claude / Openclaw / Hermes / Codex / Trae / Workbuddy / Marvis 等 AI智能体软件，让它真正成为你的工作搭档。
 
 AI-Buddy 的设计哲学是"先 5 秒记下来，再慢慢串成线"——本 SKILL 让你的 AI 搭档也能做同样的事：可以快速追加内容、可以批量整理、可以把零散信息关联起来；任何会改变你数据状态的操作都会先列计划、等你点头后才执行。
 

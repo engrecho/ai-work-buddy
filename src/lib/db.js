@@ -33,6 +33,24 @@ function getAuthToken() {
   }
 }
 
+// ── 401 统一处理：token 过期/无效时清除登录态并跳转登录页 ──────
+let _redirectingTo401 = false;
+function handleAuthError() {
+  if (_redirectingTo401) return; // 防止并发 401 触发多次跳转
+  _redirectingTo401 = true;
+  try {
+    localStorage.removeItem('ai_buddy_token');
+    localStorage.removeItem('ai_buddy_user');
+  } catch { /* ignore */ }
+  // 使用 setTimeout 确保在当前 Promise 链完成后跳转
+  setTimeout(() => {
+    if (window.location.hash !== '#/login') {
+      window.location.hash = '#/login';
+    }
+    _redirectingTo401 = false;
+  }, 100);
+}
+
 /**
  * 查询构建器（thenable）
  * 当被 await 或 .then() 调用时，执行 HTTP 请求
@@ -248,6 +266,11 @@ class QueryBuilder {
 
     try {
       const res = await fetch(url, options);
+      // 401 统一处理：token 过期或无效，清除登录态并跳转登录页
+      if (res.status === 401) {
+        handleAuthError();
+        return { data: null, error: { message: '登录已过期，请重新登录' }, count: null };
+      }
       const json = await res.json();
       return json; // { data, error, count }
     } catch (err) {
@@ -278,6 +301,11 @@ export async function batchQuery(queries) {
   }
   try {
     const res = await fetch(`${API_BASE}/batch`, options);
+    // 401 统一处理
+    if (res.status === 401) {
+      handleAuthError();
+      return queries.map(() => ({ data: null, error: { message: '登录已过期，请重新登录' } }));
+    }
     const json = await res.json();
     if (json.error) {
       return queries.map(() => ({ data: null, error: json.error }));
