@@ -3778,12 +3778,14 @@ const [showFilterPanel, setShowFilterPanel] = useState(false);
     fetchAll();
   }, []);
   const fetchAll = async () => {
-    const [taskRes, memberRes, tagRes, groupRes] = await Promise.all([
-      supabase.from('tasks').select('*').order('updated_at', { ascending: false }).order('due_date', { ascending: false, nullsFirst: false }),
-      supabase.from('task_members').select('*').order('created_at', { ascending: true }),
-      supabase.from('task_tags').select('*').order('created_at', { ascending: true }),
-      supabase.from('task_groups').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
+    // 使用批量接口一次请求拉取所有数据，避免多请求串行延迟
+    const results = await supabase.batch([
+      { table: 'tasks', order: ['updated_at:desc', 'due_date:desc'], limit: 500 },
+      { table: 'task_members', order: ['created_at:asc'] },
+      { table: 'task_tags', order: ['created_at:asc'] },
+      { table: 'task_groups', order: ['sort_order:asc', 'created_at:asc'] },
     ]);
+    const [taskRes = {}, memberRes = {}, tagRes = {}, groupRes = {}] = results;
     // group_id 已存数据库，直接使用数据库值；仅 importance/urgency/owner_ids/supporter_ids 仍用 localStorage
     const allTasks = applyStoredTaskExtra(taskRes.data || []);
     setTasks(allTasks);

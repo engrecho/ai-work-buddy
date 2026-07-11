@@ -261,6 +261,34 @@ class QueryBuilder {
 }
 
 /**
+ * 批量查询：一次 HTTP 请求执行多条查询，大幅减少首屏加载延迟
+ * @param {Array<{table: string, select?: string, filter?: string[], order?: string[], limit?: number}>} queries
+ * @returns {Promise<Array<{data: any[], error: null} | {data: null, error: {message: string}}>>}
+ */
+async function batchQuery(queries) {
+  const token = getAuthToken();
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ queries }),
+  };
+  if (token) {
+    options.headers['Authorization'] = `Bearer ${token}`;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/batch`, options);
+    const json = await res.json();
+    if (json.error) {
+      return queries.map(() => ({ data: null, error: json.error }));
+    }
+    return json.data || [];
+  } catch (err) {
+    return queries.map(() => ({ data: null, error: { message: err.message || 'Network error' } }));
+  }
+}
+
+/**
  * Supabase 兼容客户端
  * 用法与 @supabase/supabase-js 完全一致
  */
@@ -268,4 +296,5 @@ export const supabase = {
   from(table) {
     return new QueryBuilder(table);
   },
+  batch: batchQuery,
 };

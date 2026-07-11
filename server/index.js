@@ -1721,6 +1721,51 @@ function describePlanOp(op) {
   return JSON.stringify(op);
 }
 
+// ══════════════════════════════════════════════════════════════
+// 批量查询接口（解决多请求串行延迟问题）
+// 一次 HTTP 请求执行多条 SQL，结果合并为单个响应
+// ══════════════════════════════════════════════════════════════
+
+app.post('/api/batch', authMiddleware, async (req, res) => {
+  const queries = req.body?.queries || [];
+  if (!Array.isArray(queries) || queries.length === 0) {
+    return res.json({ data: null, error: { message: 'queries 必须是非空数组' } });
+  }
+  if (queries.length > 10) {
+    return res.json({ data: null, error: { message: '单次最多 10 条查询' } });
+  }
+
+  try {
+    const results = await Promise.all(
+      queries.map(async (q) => {
+        const { table, select, filter, order, limit } = q;
+        if (!ALLOWED_TABLES.has(table)) {
+          return { error: `Table "${table}" not found` };
+        }
+        try {
+          const filters = Array.isArray(filter) ? filter : filter ? [filter] : [];
+          const orders = Array.isArray(order) ? order : order ? [order] : [];
+          const userId = TABLES_WITH_USER_ID.has(table) ? req.user?.id : null;
+          const { conditions, params } = parseFilters(filters, table, userId);
+          const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+          const selectClause = parseSelect(select, table);
+          const orderClauses = parseOrder(orders, table);
+          const orderClause = orderClauses.length > 0 ? `ORDER BY ${orderClauses.join(', ')}` : '';
+          const limitClause = limit ? `LIMIT ${parseInt(limit, 10)}` : '';
+          const sql = `SELECT ${selectClause} FROM ${escapeId(table)} ${whereClause} ${orderClause} ${limitClause}`;
+          const [rows] = await pool.query(sql, params);
+          return { data: rows.map(row => transformRow(table, row)) };
+        } catch (err) {
+          return { error: err.message };
+        }
+      })
+    );
+    return res.json({ data: results, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // ── 启动服务器 ──────────────────────────────────────────────
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`AI-Buddy API server running on http://127.0.0.1:${PORT}`);

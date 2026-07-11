@@ -1121,35 +1121,20 @@ const MemosPage = ({ initialMemoId, onInitialMemoConsumed, onGoToTask } = {}) =>
     fetchAll();
   }, []);
   const fetchAll = useCallback(async () => {
-    const [{ data: m }, { data: grp }, { data: tg }, { data: tk }] = await Promise.all([
-      supabase
-        .from('memos')
-        .select('*')
-        .is('deleted_at', null)
-        .order('updated_at', {
-          ascending: false,
-          nullsFirst: false,
-        })
-        .order('created_at', {
-          ascending: false,
-        })
-        .limit(500),
-      supabase.from('task_groups').select('*').order('created_at', {
-        ascending: true,
-      }),
-      supabase.from('task_tags').select('*').order('created_at', {
-        ascending: true,
-      }),
-      supabase.from('tasks').select('id, title, status').order('created_at', {
-        ascending: false,
-      }).limit(200),
+    // 使用批量接口一次请求拉取所有数据，避免多请求串行延迟
+    const results = await supabase.batch([
+      { table: 'memos', filter: ['is:deleted_at:null'], order: ['updated_at:desc', 'created_at:desc'], limit: 500 },
+      { table: 'task_groups', order: ['created_at:asc'] },
+      { table: 'task_tags', order: ['created_at:asc'] },
+      { table: 'tasks', select: 'id,title,status', order: ['created_at:desc'], limit: 200 },
     ]);
-    setMemos(m || []);
-    setGroups(grp || []);
-    setTags(tg || []);
-    setTasks(tk || []); // 若有 initialMemoId，自动打开对应备忘
+    const [m = {}, grp = {}, tg = {}, tk = {}] = results;
+    setMemos(m.data || []);
+    setGroups(grp.data || []);
+    setTags(tg.data || []);
+    setTasks(tk.data || []); // 若有 initialMemoId，自动打开对应备忘
     if (initialMemoId) {
-      const target = (m || []).find((memo) => String(memo.id) === String(initialMemoId));
+      const target = (m.data || []).find((memo) => String(memo.id) === String(initialMemoId));
       if (target) {
         setActiveMemo(target);
         setPanelMode('view');

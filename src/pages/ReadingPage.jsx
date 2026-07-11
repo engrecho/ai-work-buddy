@@ -173,8 +173,18 @@ const ReadingPage = () => {
   const urlFetchedRef = useRef("");
 
   useEffect(() => {
-    fetchItems();
-    fetchTags();
+    // 批量获取：一次请求拉取阅读列表 + 标签
+    (async () => {
+      setLoading(true);
+      const results = await supabase.batch([
+        { table: 'reading_items', select: 'id,url,platform,title,summary,cover_url,category,is_read,is_starred,is_offline,offline_path,tags,created_at,deleted_at', filter: ['is:deleted_at:null'], order: ['created_at:desc'], limit: 200 },
+        { table: 'task_tags', order: ['created_at:asc'] },
+      ]);
+      const [itemsRes = {}, tagsRes = {}] = results;
+      setItems(itemsRes.data || []);
+      setTags(tagsRes.data || []);
+      setLoading(false);
+    })();
   }, []);
 
   // ── 数据获取 ──────────────────────────────────────────────────────
