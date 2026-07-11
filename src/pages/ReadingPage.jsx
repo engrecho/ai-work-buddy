@@ -147,7 +147,7 @@ async function classifyWithAI(title, summary, url, tagNames) {
 // ════════════════════════════════════════════════════════════════════
 // 主组件
 // ════════════════════════════════════════════════════════════════════
-const ReadingPage = () => {
+const ReadingPage = ({ initialReadingId, onInitialReadingConsumed } = {}) => {
   const [items, setItems] = useState([]);
   // 统一使用 task_tags 表
   const [tags, setTags] = useState([]);
@@ -181,10 +181,18 @@ const ReadingPage = () => {
         { table: 'task_tags', order: ['created_at:asc'] },
       ]);
       const [itemsRes = {}, tagsRes = {}] = results;
-      setItems(itemsRes.data || []);
+      const loadedItems = itemsRes.data || [];
+      setItems(loadedItems);
       setTags(tagsRes.data || []);
       setLoading(false);
+      // 若有 initialReadingId，自动打开对应条目的编辑详情
+      if (initialReadingId) {
+        const target = loadedItems.find((it) => String(it.id) === String(initialReadingId));
+        if (target) handleStartEdit(target);
+        onInitialReadingConsumed?.();
+      }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── 数据获取 ──────────────────────────────────────────────────────

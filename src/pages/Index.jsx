@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 
 const TasksPage = lazy(() => import('./TasksPage'));
 const MemosPage = lazy(() => import('./MemosPage'));
@@ -22,14 +23,14 @@ function TabLoader() {
 }
 
 const navItems = [
-  { id: 'dashboard', label: '总览', icon: LayoutDashboard },
+  { id: 'dashboard', label: '统计', icon: LayoutDashboard },
   { id: 'tasks', label: '任务', icon: CheckSquare },
   { id: 'memos', label: '备忘', icon: FileText },
   { id: 'reading', label: '阅读', icon: BookOpen },
 ];
 
 const pageTitles = {
-  dashboard: '总览',
+  dashboard: '统计',
   tasks: '任务',
   memos: '备忘',
   reading: '阅读',
@@ -373,10 +374,18 @@ function FloatFAB({ active, onClick }) {
 }
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('tasks');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 从 URL 读取初始 tab 和 id（支持深链接）
+  const urlTab = searchParams.get('tab');
+  const urlId = searchParams.get('id');
+  // tab 映射：URL 参数 → 内部 tab id
+  const tabFromUrl = urlTab === 'statistics' ? 'dashboard' : (urlTab || 'tasks');
+
+  const [activeTab, setActiveTab] = useState(tabFromUrl);
   const [configOpen, setConfigOpen] = useState(false);
-  const [pendingMemoId, setPendingMemoId] = useState(null);
-  const [pendingTaskId, setPendingTaskId] = useState(null);
+  const [pendingMemoId, setPendingMemoId] = useState(urlTab === 'memos' && urlId ? urlId : null);
+  const [pendingTaskId, setPendingTaskId] = useState(urlTab === 'tasks' && urlId ? urlId : null);
+  const [pendingReadingId, setPendingReadingId] = useState(urlTab === 'reading' && urlId ? urlId : null);
   const [floatNoteOpen, setFloatNoteOpen] = useState(false);
   const [floatTasks, setFloatTasks] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -384,13 +393,14 @@ const Index = () => {
 
   const { user } = useAuth();
 
+  // ── URL → State 同步：当浏览器前进/后退时跟随 URL ──────────────
+  useEffect(() => {
+    const t = urlTab === 'statistics' ? 'dashboard' : (urlTab || 'tasks');
+    if (t !== activeTab) setActiveTab(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlTab]);
+
   // ── 移动端返回手势 / 浏览器后退支持 ──
-  // 设计:
-  //   - Index 不再主动 pushState/popstate(避免抢断子页面内部状态)
-  //   - 子页面(任务详情、移动端阅读添加等)在打开时自己 pushState 一次,
-  //     监听到 popstate 时关闭自身 → 浏览器回退时不会跳走 tab
-  //   - Index 只在弹层(用户设置 / 悬浮梳理 / 配置)打开时,先尝试 history.back()
-  //     让最近的子页面/弹层自己关闭,而不是直接 setActiveTab
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onPopState = () => {
@@ -400,17 +410,13 @@ const Index = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // 弹层关闭:回退到上一层(让浏览器自己控制栈)
-  // 弹层打开:不动 history(子页面/外层已 push 过)
-  useEffect(() => {
-    // 监听弹层变化:关闭时如果历史栈里有"弹层 push 的项",back 一步
-    // 但这容易和子页面冲突,保守做法:什么都不做,弹层用 onClose 自管
-  }, []);
-
   const handleNavClick = (id) => {
     setActiveTab(id);
     setConfigOpen(false);
     setSettingsOpen(false);
+    // 同步到 URL（清除 id 参数）
+    const tabParam = id === 'dashboard' ? 'statistics' : id;
+    setSearchParams({ tab: tabParam }, { replace: true });
   };
   const openSettings = (section) => {
     setSettingsSection(section ?? null);
@@ -421,11 +427,13 @@ const Index = () => {
     setPendingMemoId(memoId);
     setActiveTab('memos');
     setConfigOpen(false);
+    setSearchParams({ tab: 'memos', id: memoId }, { replace: true });
   };
   const handleGoToTask = (taskId) => {
     setPendingTaskId(taskId);
     setActiveTab('tasks');
     setConfigOpen(false);
+    setSearchParams({ tab: 'tasks', id: taskId }, { replace: true });
   };
 
   const renderPage = () => {
@@ -474,7 +482,7 @@ const Index = () => {
       case 'reading':
         return (
           <Suspense fallback={<TabLoader />}>
-            <ReadingPage />
+            <ReadingPage initialReadingId={pendingReadingId} onInitialReadingConsumed={() => setPendingReadingId(null)} />
           </Suspense>
         );
       default:

@@ -1,15 +1,9 @@
 import { lazy } from 'react';
 
 const Index = lazy(() => import('./pages/Index'));
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const TasksPage = lazy(() => import('./pages/TasksPage'));
-const MemosPage = lazy(() => import('./pages/MemosPage'));
-const ReadingPage = lazy(() => import('./pages/ReadingPage'));
 
+// 所有页面都在 Index 内通过 URL ?tab= 和 ?id= 控制
+// 此文件仅保留用于兼容性导入
 export const navItems = [
-  { to: '/',          page: <Index /> },
-  { to: '/dashboard', page: <DashboardPage /> },
-  { to: '/tasks',     page: <TasksPage /> },
-  { to: '/memos',     page: <MemosPage /> },
-  { to: '/reading',   page: <ReadingPage /> },
+  { to: '/', page: <Index /> },
 ];

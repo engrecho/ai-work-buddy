@@ -2,11 +2,11 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
-import { navItems } from "./nav-items";
+import { HashRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const LoginPage = lazy(() => import("./pages/LoginPage"));
+const Index = lazy(() => import("./pages/Index"));
 
 const queryClient = new QueryClient();
 
@@ -35,6 +35,16 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+// ── 旧路由兼容重定向 ──────────────────────────────────────
+// /tasks → /?tab=tasks, /memos → /?tab=memos, /reading → /?tab=reading
+// /tasks/123 → /?tab=tasks&id=123, /memos/456 → /?tab=memos&id=456
+function LegacyRedirect({ tab }) {
+  const [params] = useSearchParams();
+  const id = params.get('id');
+  const target = id ? `/?tab=${tab}&id=${id}` : `/?tab=${tab}`;
+  return <Navigate to={target} replace />;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -44,13 +54,13 @@ const App = () => (
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              {navItems.map(({ to, page }) => (
-                <Route
-                  key={to}
-                  path={to}
-                  element={<ProtectedRoute>{page}</ProtectedRoute>}
-                />
-              ))}
+              {/* 主路由：所有功能都在 Index 内通过 ?tab= 和 ?id= 控制 */}
+              <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+              {/* 旧路由兼容 → 重定向到 /?tab=xxx */}
+              <Route path="/dashboard" element={<Navigate to="/?tab=statistics" replace />} />
+              <Route path="/tasks" element={<LegacyRedirect tab="tasks" />} />
+              <Route path="/memos" element={<LegacyRedirect tab="memos" />} />
+              <Route path="/reading" element={<LegacyRedirect tab="reading" />} />
             </Routes>
           </Suspense>
         </HashRouter>
