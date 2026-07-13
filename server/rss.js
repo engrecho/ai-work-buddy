@@ -153,10 +153,9 @@ export function parseFeedXml(xml) {
       // fallback：自闭合 link 无 href 时取文本
       if (!itLink) {
         const txtLink = pickTag(inner, 'link');
-        if (txtLink) itLink = txtLink.trim();
+        if (txtLink) itLink = decodeEntities(txtLink).trim();
       }
-
-      const guid = (pickTag(inner, 'id') || itLink || itTitle || '').trim();
+      const guid = decodeEntities(pickTag(inner, 'id') || itLink || itTitle || '').trim();
       const pubRaw = pickTag(inner, 'published') || pickTag(inner, 'updated');
       const pubDate = parseDate(pubRaw);
       const summaryRaw = pickTag(inner, 'summary') || pickTag(inner, 'content') || '';
@@ -184,7 +183,7 @@ export function parseFeedXml(xml) {
     if (chanTitle) feedTitle = stripHtml(chanTitle);
 
     const chanLink = pickTag(xml, 'link');
-    if (chanLink) feedLink = chanLink.trim();
+    if (chanLink) feedLink = decodeEntities(chanLink).trim();
 
     const chanDesc = pickTag(xml, 'description');
     if (chanDesc) feedDesc = stripHtml(chanDesc);
@@ -193,8 +192,9 @@ export function parseFeedXml(xml) {
     for (const it of itemEls) {
       const inner = it.inner;
       const itTitle = stripHtml(pickTag(inner, 'title') || '');
-      const itLink = (pickTag(inner, 'link') || '').trim();
-      const guid = (pickTag(inner, 'guid') || itLink || itTitle || '').trim();
+      // link / guid 可能被 CDATA 包裹，用 decodeEntities 解开
+      const itLink = decodeEntities(pickTag(inner, 'link') || '').trim();
+      const guid = decodeEntities(pickTag(inner, 'guid') || itLink || itTitle || '').trim();
       const pubRaw = pickTag(inner, 'pubDate') || pickTag(inner, 'published') || pickTag(inner, 'dc:date');
       const pubDate = parseDate(pubRaw);
       const descRaw = pickTag(inner, 'description') || '';
@@ -212,7 +212,7 @@ export function parseFeedXml(xml) {
         summary: stripHtml(descRaw).slice(0, 1000),
         content: contentRaw,
         cover_url: extractCoverFromHtml(contentRaw || descRaw),
-        author: authorEl ? stripHtml(authorEl).slice(0, 255) : '',
+        author: authorEl ? decodeEntities(authorEl).slice(0, 255) : '',
         categories: cats.slice(0, 10),
       });
     }
@@ -240,27 +240,54 @@ export async function fetchFeed(url) {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'AI-Buddy-RSS/1.0 (+https://github.com/engrecho/AI-buddy)',
-        'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+        // 用一个常见的 RSS 阅读器 UA，避免被部分网站拦截
+        'User-Agent': 'Mozilla/5.0 (compatible; AI-Buddy RSS Reader; +https://github.com/engrecho/AI-buddy)',
+        'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, text/html, */*',
       },
       redirect: 'follow',
     });
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} ${res.statusText}`);
     }
+
+    // 检测是否被重定向到了非 RSS 路径（常见于 RSS URL 失效被网站 302 到首页/落地页）
+    const finalUrl = res.url || url;
+    const finalCt = (res.headers.get('content-type') || '').toLowerCase();
+
     const buf = await res.arrayBuffer();
     // 简单 charset 探测：优先 HTTP header，其次 XML 声明
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
     let charset = 'utf-8';
-    const ctMatch = ct.match(/charset=([^;]+)/);
+    const ctMatch = finalCt.match(/charset=([^;]+)/);
     if (ctMatch) charset = ctMatch[1].trim();
-    const text = new TextDecoder(charset).decode(buf);
+    // TextDecoder 对某些 charset（如 gbk）可能不支持，做 fallback
+    let text;
+    try {
+      text = new TextDecoder(charset, { fatal: false }).decode(buf);
+    } catch (_) {
+      // 不支持的 charset，回退 utf-8
+      text = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+    }
     // 检查 XML 声明里的 encoding（如果与 header 不同，以 XML 声明为准）
     const xmlDecl = text.match(/<\?xml[^>]+encoding=["']([^"']+)["']/i);
     if (xmlDecl && xmlDecl[1].toLowerCase() !== charset.toLowerCase()) {
-      const reText = new TextDecoder(xmlDecl[1]).decode(buf);
-      return parseFeedXml(reText);
+      try {
+        text = new TextDecoder(xmlDecl[1], { fatal: false }).decode(buf);
+      } catch (_) { /* 用之前 utf-8 解码的 */ }
     }
+
+    // ── 检测是否返回了 HTML 而非 RSS/Atom ──
+    // 去掉 BOM 和前导空白后看开头
+    const head = text.replace(/^\uFEFF?/, '').trimStart().slice(0, 500).toLowerCase();
+    const looksLikeXml = head.startsWith('<?xml') || head.startsWith('<rss') || head.startsWith('<feed') || head.startsWith('<rdf:rdf');
+    const looksLikeHtml = head.startsWith('<!doctype html') || head.startsWith('<html') || (finalCt.includes('text/html') && !looksLikeXml);
+
+    if (looksLikeHtml) {
+      // 给出有意义的错误，前端能展示给用户
+      const redirHint = res.redirected ? `（被重定向到 ${finalUrl}）` : '';
+      throw new Error(`此 URL 返回的是 HTML 页面而非 RSS/Atom 订阅内容${redirHint}，请检查 URL 是否正确或已失效`);
+    }
+
+    // 如果既不像 XML 也不像 HTML，尝试解析看看
     return parseFeedXml(text);
   } finally {
     clearTimeout(timer);
