@@ -345,7 +345,8 @@ export async function refreshSource(source) {
       const BATCH = 100;
       for (let i = 0; i < values.length; i += BATCH) {
         const slice = values.slice(i, i + BATCH);
-        const placeholders = slice.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+        // 注意：11 个字段对应 11 个 ?（之前误写 12 个导致 SQL 报错）
+        const placeholders = slice.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
         const params = slice.flat();
         await pool.query(
           `INSERT IGNORE INTO rss_articles

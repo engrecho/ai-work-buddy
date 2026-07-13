@@ -580,6 +580,17 @@ const RssPage = () => {
               />
             </div>
 
+            {/* 刷新按钮（醒目，触发全部源抓取 + 重新拉取列表） */}
+            <button
+              onClick={handleRefreshAll}
+              disabled={refreshingAll || sources.length === 0}
+              className="flex items-center gap-1.5 h-8 px-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 active:scale-95 transition-transform flex-shrink-0"
+              title="刷新所有订阅源并重新加载列表"
+            >
+              {refreshingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="hidden sm:inline">{refreshingAll ? '刷新中...' : '刷新'}</span>
+            </button>
+
             {/* 添加按钮 */}
             <button
               onClick={openAddSource}
