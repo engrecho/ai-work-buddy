@@ -10,9 +10,10 @@
 #   2. 执行脚本内容填写: bash /www/wwwroot/buddy.bajiaolu.cn/deploy/pull.sh
 #   3. GitHub Webhook 指向宝塔生成的 URL
 #
-# 单点运维操作（重启 / 迁移 / 备份 / 查日志等）请用 ops.sh：
-#   bash /www/wwwroot/buddy.bajiaolu.cn/deploy/ops.sh <action>
-# 详见 ops.sh 顶部注释或运行 bash ops.sh help
+# 一次性运维任务（修复数据 / 添加配置 / 清理等）：
+#   把任务脚本放到 deploy/once/ 下，push 即可，本脚本部署完会自动执行
+#   成功后记入 deploy/once/.done 永久跳过（和 SQL 迁移同思路）
+#   脚本里可用环境变量：PROJECT_DIR / DB_USER / DB_PASSWORD / DB_NAME
 # ============================================================
 
 set -e
@@ -25,6 +26,21 @@ export NVM_DIR="$HOME/.nvm"
 PROJECT_DIR="/www/wwwroot/buddy.bajiaolu.cn"
 REPO_BRANCH="main"
 LOG_FILE="/www/wwwlogs/buddy-deploy.log"
+
+# ── 加载 .env（拿 DB 凭据，供 migrate / once 任务用） ─────────
+DB_USER="${DB_USER:-buddy}"
+DB_NAME="${DB_NAME:-buddy}"
+DB_PASSWORD="${DB_PASSWORD:-}"
+if [ -z "$DB_PASSWORD" ]; then
+  if [ -f "$PROJECT_DIR/.env" ]; then
+    set -a; . "$PROJECT_DIR/.env"; set +a
+  elif [ -f "$PROJECT_DIR/server/.env" ]; then
+    set -a; . "$PROJECT_DIR/server/.env"; set +a
+  fi
+  DB_USER="${DB_USER:-buddy}"
+  DB_NAME="${DB_NAME:-buddy}"
+  DB_PASSWORD="${DB_PASSWORD:-}"
+fi
 
 # ── 日志函数 ─────────────────────────────────────────────────
 log() {
@@ -81,15 +97,6 @@ for sql_file in "$MIGRATE_DIR"/migrate-*.sql; do
   fname=$(basename "$sql_file")
   if ! grep -qx "$fname" "$APPLIED_FILE" 2>/dev/null; then
     log "  → 应用迁移: $fname"
-    # 从 .env 读 DB 凭据；fallback 到 PM2 配
-    if [ -f "$PROJECT_DIR/.env" ]; then
-      set -a; . "$PROJECT_DIR/.env"; set +a
-    elif [ -f "$PROJECT_DIR/server/.env" ]; then
-      set -a; . "$PROJECT_DIR/server/.env"; set +a
-    fi
-    DB_USER=${DB_USER:-buddy}
-    DB_NAME=${DB_NAME:-buddy}
-    DB_PASSWORD=${DB_PASSWORD:-}
     if mysql -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < "$sql_file" 2>>"$LOG_FILE"; then
       echo "$fname" >> "$APPLIED_FILE"
       log "    ✓ $fname 成功"
@@ -103,13 +110,13 @@ shopt -u nullglob
 log "========== 部署完成 ($CURRENT_COMMIT) =========="
 
 # 7. 同步 Skills 到 /root/.openclaw/workspace/skills/
-log "[7/8] 同步 Skills 到 openclaw..."
+log "[7/9] 同步 Skills 到 openclaw..."
 bash "$PROJECT_DIR/deploy/sync-skills.sh" >> "$LOG_FILE" 2>&1 || {
   log "  ✗ sync-skills.sh 失败（已记录到 $LOG_FILE）"
 }
 
 # 8. 打包 buddy-skill 供外部下载部署
-log "[8/8] 打包 buddy-skill..."
+log "[8/9] 打包 buddy-skill..."
 SKILL_TARBALL="$PROJECT_DIR/build/buddy-skill.tar.gz"
 cd "$PROJECT_DIR"
 tar -czf "$SKILL_TARBALL" \
@@ -124,5 +131,37 @@ if [ -n "$SKILL_VERSION" ]; then
   echo "$SKILL_VERSION" > "$PROJECT_DIR/build/buddy-skill.version"
   log "  ✓ 版本号: $SKILL_VERSION (buddy-skill.version)"
 fi
+
+# 9. 一次性运维任务（deploy/once/*.sh）
+#    机制：每次部署后扫描此目录，未在 .done 里记录的任务会被执行，
+#          成功后写入 .done 永久跳过（和 SQL 迁移同样的去重思路）。
+#    用法：AI 在本地 deploy/once/ 下创建 NN-xxx.sh → push → webhook 自动拉取执行
+#    注意：脚本里可用环境变量 PROJECT_DIR / DB_USER / DB_PASSWORD / DB_NAME / NVM_DIR
+log "[9/9] 一次性运维任务..."
+ONCE_DIR="$PROJECT_DIR/deploy/once"
+ONCE_DONE="$ONCE_DIR/.done"
+mkdir -p "$ONCE_DIR"
+touch "$ONCE_DONE"
+shopt -s nullglob
+ONCE_COUNT=0
+for task_file in "$ONCE_DIR"/*.sh; do
+  fname=$(basename "$task_file")
+  if ! grep -qx "$fname" "$ONCE_DONE" 2>/dev/null; then
+    log "  → 执行: $fname"
+    # 导出环境变量给子脚本用
+    export PROJECT_DIR DB_USER DB_PASSWORD DB_NAME NVM_DIR
+    if bash "$task_file" >> "$LOG_FILE" 2>&1; then
+      echo "$fname" >> "$ONCE_DONE"
+      log "    ✓ $fname 成功"
+      ONCE_COUNT=$((ONCE_COUNT + 1))
+    else
+      log "    ✗ $fname 失败（查看 $LOG_FILE，下次部署会重试）"
+    fi
+  else
+    log "  · $fname 已执行，跳过"
+  fi
+done
+shopt -u nullglob
+log "  一次性任务本次执行 $ONCE_COUNT 个"
 
 log "========== 全部完成 =========="
