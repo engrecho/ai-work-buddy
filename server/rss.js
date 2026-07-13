@@ -56,20 +56,25 @@ function decodeEntities(s) {
 
 function stripHtml(html) {
   if (!html) return '';
-  return decodeEntities(
-    String(html)
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-  ).trim();
+  // 1. 先提取 CDATA 并解码实体（让 &lt;a&gt; 变成 <a>，方便后续剥离）
+  let s = decodeEntities(String(html));
+  // 2. 剥离 script / style / br / p / 所有标签
+  s = s
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s;
 }
 
 function extractCoverFromHtml(html) {
   if (!html) return null;
-  const m = String(html).match(/<img[^>]+src=["']([^"']+)["']/i);
+  // 先提取 CDATA 并解码实体，再搜索 img 标签
+  const decoded = decodeEntities(String(html));
+  const m = decoded.match(/<img[^>]+src=["']([^"']+)["']/i);
   return m ? m[1] : null;
 }
 
