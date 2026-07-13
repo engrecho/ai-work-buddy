@@ -59,6 +59,18 @@ export const TABLE_COLUMNS = {
   quick_notes: [
     'id', 'user_id', 'content', 'tags', 'created_at'
   ],
+  // RSS 订阅源
+  rss_sources: [
+    'id', 'user_id', 'name', 'url', 'description', 'site_url', 'color',
+    'last_fetched_at', 'last_status', 'last_error', 'article_count',
+    'created_at', 'updated_at'
+  ],
+  // RSS 文章
+  rss_articles: [
+    'id', 'user_id', 'source_id', 'guid', 'url', 'title', 'summary', 'content',
+    'cover_url', 'author', 'categories', 'published_at', 'is_read', 'is_starred',
+    'created_at', 'updated_at'
+  ],
 };
 
 // ── 不需要登录的公开表（只读，用于系统预设数据）───────────
@@ -75,6 +87,7 @@ export const JSON_COLUMNS = {
   memos: ['related_task_ids', 'tag_ids'],
   task_notes: ['related_task_ids'],
   reading_items: ['tags'],
+  rss_articles: ['categories'],
 };
 
 // ── DATETIME 列 ──────────────────────────────────────────────
@@ -89,10 +102,13 @@ export const DATETIME_COLUMNS = {
   reading_items: ['deleted_at', 'created_at'],
   quick_notes: ['created_at'],
   users: ['created_at', 'last_login_at'],
+  rss_sources: ['last_fetched_at', 'created_at', 'updated_at'],
+  rss_articles: ['published_at', 'created_at', 'updated_at'],
 };
 
 // ── BOOLEAN 列 ───────────────────────────────────────────────
 export const BOOLEAN_COLUMNS = {
   tasks: ['is_project', 'need_report'],
   reading_items: ['is_read', 'is_starred', 'is_offline'],
+  rss_articles: ['is_read', 'is_starred'],
 };

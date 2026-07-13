@@ -18,6 +18,7 @@ import {
 } from './auth.js';
 import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles, extractUrl, downloadFromParsedData } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
+import { fetchFeed, refreshSource, refreshAllSources, startRssScheduler } from './rss.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -463,6 +464,356 @@ app.put('/api/user-settings', authMiddleware, async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// RSS 订阅阅读
+// - GET    /api/rss/sources           列出当前用户的订阅源
+// - POST   /api/rss/sources           新建订阅源（创建后立即后台抓取一次）
+// - PATCH  /api/rss/sources/:id       更新订阅源（name/url/color/description）
+// - DELETE /api/rss/sources/:id       删除订阅源（级联删除文章）
+// - POST   /api/rss/sources/:id/refresh 手动触发抓取
+// - GET    /api/rss/articles          列出文章（支持 source_id/is_read/is_starred/q 过滤，published_at|created_at 排序）
+// - GET    /api/rss/articles/grouped   按订阅源分组返回
+// - PATCH  /api/rss/articles/:id       更新文章（is_read/is_starred）
+// - DELETE /api/rss/articles/:id       删除文章
+// ══════════════════════════════════════════════════════════════════════
+
+// 列出订阅源
+app.get('/api/rss/sources', authMiddleware, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, user_id, name, url, description, site_url, color,
+              last_fetched_at, last_status, last_error, article_count,
+              created_at, updated_at
+       FROM rss_sources
+       WHERE user_id = ?
+       ORDER BY created_at ASC`,
+      [req.user.id]
+    );
+    return res.json({ data: rows.map(r => transformRow('rss_sources', r)), error: null });
+  } catch (err) {
+    console.error('rss/sources GET error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 新建订阅源
+app.post('/api/rss/sources', authMiddleware, async (req, res) => {
+  const { url, name, color, description } = req.body || {};
+  if (!url || typeof url !== 'string') {
+    return res.json({ data: null, error: { message: '缺少 url' } });
+  }
+  // 简单 URL 校验
+  try { new URL(url); } catch { return res.json({ data: null, error: { message: 'url 不合法' } }); }
+  try {
+    // 先创建（status=pending），随后后台抓取
+    const [result] = await pool.query(
+      `INSERT INTO rss_sources (user_id, name, url, color, description, last_status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [req.user.id, (name || '').slice(0, 255) || '', url, color || '#6b7280', (description || '').slice(0, 65535) || null]
+    );
+    const sourceId = result.insertId;
+    const [rows] = await pool.query(
+      `SELECT id, user_id, name, url, description, site_url, color,
+              last_fetched_at, last_status, last_error, article_count,
+              created_at, updated_at
+       FROM rss_sources WHERE id = ?`,
+      [sourceId]
+    );
+    const source = rows[0];
+    // 立即返回，后台抓取
+    refreshSource({ id: sourceId, user_id: req.user.id, name: source.name, url: source.url }).catch(() => {});
+    return res.json({ data: transformRow('rss_sources', source), error: null });
+  } catch (err) {
+    console.error('rss/sources POST error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 更新订阅源
+app.patch('/api/rss/sources/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 不合法' } });
+  }
+  const body = req.body || {};
+  const ALLOWED = ['name', 'url', 'color', 'description'];
+  const sets = [];
+  const params = [];
+  for (const k of ALLOWED) {
+    if (Object.prototype.hasOwnProperty.call(body, k)) {
+      if (k === 'url') {
+        try { new URL(body.url); } catch { return res.json({ data: null, error: { message: 'url 不合法' } }); }
+      }
+      sets.push(`\`${k}\` = ?`);
+      params.push(body[k]);
+    }
+  }
+  // 如果 url 改了，触发重新抓取
+  const urlChanged = Object.prototype.hasOwnProperty.call(body, 'url');
+  try {
+    const [rows] = await pool.query('SELECT id, user_id, name, url FROM rss_sources WHERE id = ? AND user_id = ?', [id, req.user.id]);
+    if (rows.length === 0) {
+      return res.json({ data: null, error: { message: '订阅源不存在或无权限' } });
+    }
+    if (sets.length > 0) {
+      sets.push('`updated_at` = CURRENT_TIMESTAMP');
+      params.push(id, req.user.id);
+      await pool.query(`UPDATE rss_sources SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, params);
+    }
+    const [updated] = await pool.query(
+      `SELECT id, user_id, name, url, description, site_url, color,
+              last_fetched_at, last_status, last_error, article_count,
+              created_at, updated_at
+       FROM rss_sources WHERE id = ?`,
+      [id]
+    );
+    // url 变了：触发抓取（用新 url）
+    if (urlChanged) {
+      const newUrl = body.url;
+      refreshSource({ id, user_id: req.user.id, name: updated[0].name, url: newUrl }).catch(() => {});
+    }
+    return res.json({ data: transformRow('rss_sources', updated[0]), error: null });
+  } catch (err) {
+    console.error('rss/sources PATCH error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 删除订阅源（级联删除文章）
+app.delete('/api/rss/sources/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 不合法' } });
+  }
+  try {
+    const [result] = await pool.query('DELETE FROM rss_sources WHERE id = ? AND user_id = ?', [id, req.user.id]);
+    if (result.affectedRows === 0) {
+      return res.json({ data: null, error: { message: '订阅源不存在或无权限' } });
+    }
+    // 文章由外键 ON DELETE CASCADE 自动删除
+    return res.json({ data: { success: true }, error: null });
+  } catch (err) {
+    console.error('rss/sources DELETE error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 手动触发抓取
+app.post('/api/rss/sources/:id/refresh', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 不合法' } });
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, user_id, name, url FROM rss_sources WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.json({ data: null, error: { message: '订阅源不存在或无权限' } });
+    }
+    const src = rows[0];
+    // 异步触发，立即返回（前端轮询）
+    refreshSource(src).catch(() => {});
+    return res.json({ data: { success: true, message: '已在后台开始抓取' }, error: null });
+  } catch (err) {
+    console.error('rss/sources/refresh error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 列出文章
+// query: source_id, is_read, is_starred, q, order=published_at|created_at, dir=desc|asc, limit, offset
+app.get('/api/rss/articles', authMiddleware, async (req, res) => {
+  try {
+    const { source_id, is_read, is_starred, q } = req.query;
+    const orderCol = (req.query.order === 'created_at') ? 'created_at' : 'published_at';
+    const dir = (req.query.dir === 'asc') ? 'ASC' : 'DESC';
+    const limit = Math.min(parseInt(req.query.limit || '100', 10) || 100, 500);
+    const offset = Math.max(parseInt(req.query.offset || '0', 10) || 0, 0);
+
+    const where = ['a.user_id = ?'];
+    const params = [req.user.id];
+    if (source_id) {
+      where.push('a.source_id = ?');
+      params.push(parseInt(source_id, 10));
+    }
+    if (is_read === 'true' || is_read === '1') where.push('a.is_read = 1');
+    else if (is_read === 'false' || is_read === '0') where.push('a.is_read = 0');
+    if (is_starred === 'true' || is_starred === '1') where.push('a.is_starred = 1');
+
+    if (q) {
+      where.push('(a.title LIKE ? OR a.summary LIKE ?)');
+      params.push(`%${q}%`, `%${q}%`);
+    }
+
+    const sql = `
+      SELECT a.id, a.user_id, a.source_id, a.guid, a.url, a.title, a.summary,
+             a.cover_url, a.author, a.categories, a.published_at, a.is_read, a.is_starred,
+             a.created_at, a.updated_at,
+             s.name AS source_name, s.color AS source_color
+      FROM rss_articles a
+      LEFT JOIN rss_sources s ON s.id = a.source_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY a.${orderCol} IS NULL ${dir === 'DESC' ? 'DESC' : 'ASC'}, a.${orderCol} ${dir}, a.id ${dir}
+      LIMIT ? OFFSET ?
+    `;
+    params.push(limit, offset);
+
+    const [rows] = await pool.query(sql, params);
+    const data = rows.map(r => {
+      const { source_name, source_color, ...rest } = r;
+      const transformed = transformRow('rss_articles', rest);
+      return { ...transformed, source_name, source_color };
+    });
+    return res.json({ data, error: null });
+  } catch (err) {
+    console.error('rss/articles GET error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 按订阅源分组返回
+app.get('/api/rss/articles/grouped', authMiddleware, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '20', 10) || 20, 100);
+    const isReadFilter = req.query.is_read;
+    const isStarredFilter = req.query.is_starred;
+
+    // 先拉所有订阅源（按 created_at 升序，保持用户添加顺序）
+    const [sources] = await pool.query(
+      `SELECT id, name, color, site_url, article_count, last_fetched_at, last_status
+       FROM rss_sources WHERE user_id = ? ORDER BY created_at ASC`,
+      [req.user.id]
+    );
+
+    // 每个源取最新 N 条
+    const where = ['a.user_id = ?'];
+    const params = [req.user.id];
+    if (isReadFilter === 'false' || isReadFilter === '0') {
+      where.push('a.is_read = 0');
+    } else if (isReadFilter === 'true' || isReadFilter === '1') {
+      where.push('a.is_read = 1');
+    }
+    if (isStarredFilter === 'true' || isStarredFilter === '1') {
+      where.push('a.is_starred = 1');
+    }
+    const sql = `
+      SELECT a.id, a.source_id, a.url, a.title, a.summary, a.cover_url, a.author,
+             a.categories, a.published_at, a.is_read, a.is_starred, a.created_at
+      FROM rss_articles a
+      WHERE ${where.join(' AND ')}
+      ORDER BY a.published_at IS NULL DESC, a.published_at DESC, a.id DESC
+      LIMIT 1000
+    `;
+    const [articles] = await pool.query(sql, params);
+
+    // 按 source_id 分组
+    const groupMap = new Map();
+    for (const a of articles) {
+      if (!groupMap.has(a.source_id)) groupMap.set(a.source_id, []);
+      groupMap.get(a.source_id).push(transformRow('rss_articles', a));
+    }
+
+    const data = sources.map(s => ({
+      source: { id: s.id, name: s.name, color: s.color, site_url: s.site_url, article_count: s.article_count, last_fetched_at: s.last_fetched_at, last_status: s.last_status },
+      articles: (groupMap.get(s.id) || []).slice(0, limit),
+    }));
+    return res.json({ data, error: null });
+  } catch (err) {
+    console.error('rss/articles/grouped error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 更新文章
+app.patch('/api/rss/articles/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 不合法' } });
+  }
+  const body = req.body || {};
+  const sets = [];
+  const params = [];
+  if (Object.prototype.hasOwnProperty.call(body, 'is_read')) {
+    sets.push('`is_read` = ?');
+    params.push(body.is_read ? 1 : 0);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'is_starred')) {
+    sets.push('`is_starred` = ?');
+    params.push(body.is_starred ? 1 : 0);
+  }
+  if (sets.length === 0) {
+    return res.json({ data: null, error: { message: '没有可更新字段' } });
+  }
+  try {
+    const [result] = await pool.query(
+      `UPDATE rss_articles SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`,
+      [...params, id, req.user.id]
+    );
+    if (result.affectedRows === 0) {
+      return res.json({ data: null, error: { message: '文章不存在或无权限' } });
+    }
+    return res.json({ data: { success: true }, error: null });
+  } catch (err) {
+    console.error('rss/articles PATCH error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 删除文章
+app.delete('/api/rss/articles/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 不合法' } });
+  }
+  try {
+    // 先取出 source_id 用于更新计数
+    const [rows] = await pool.query(
+      'SELECT source_id FROM rss_articles WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.json({ data: null, error: { message: '文章不存在或无权限' } });
+    }
+    const sourceId = rows[0].source_id;
+    await pool.query('DELETE FROM rss_articles WHERE id = ? AND user_id = ?', [id, req.user.id]);
+    // 重新统计源的文章数
+    await pool.query(
+      'UPDATE rss_sources SET article_count = (SELECT COUNT(*) FROM rss_articles WHERE source_id = ?) WHERE id = ?',
+      [sourceId, sourceId]
+    ).catch(() => {});
+    return res.json({ data: { success: true }, error: null });
+  } catch (err) {
+    console.error('rss/articles DELETE error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 预览 RSS 源（不落库，用于添加前确认源可用并预读源信息）
+app.post('/api/rss/preview', authMiddleware, async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) {
+    return res.json({ data: null, error: { message: '缺少 url' } });
+  }
+  try { new URL(url); } catch { return res.json({ data: null, error: { message: 'url 不合法' } }); }
+  try {
+    const feed = await fetchFeed(url);
+    return res.json({
+      data: {
+        title: feed.title,
+        link: feed.link,
+        description: feed.description,
+        sample_count: feed.items.length,
+        sample_items: feed.items.slice(0, 3).map(it => ({ title: it.title, link: it.link, published_at: it.published_at })),
+      },
+      error: null,
+    });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // ── 认证路由 ────────────────────────────────────────────────
 
 // 注册
@@ -617,7 +968,8 @@ app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
 const ALLOWED_TABLES = new Set(Object.keys(TABLE_COLUMNS));
 const TABLES_WITH_USER_ID = new Set([
   'tasks', 'task_groups', 'task_members', 'task_tags', 'task_comments',
-  'memos', 'task_notes', 'reading_items', 'quick_notes'
+  'memos', 'task_notes', 'reading_items', 'quick_notes',
+  'rss_sources', 'rss_articles'
 ]);
 
 function validateColumn(table, column) {
@@ -1789,4 +2141,6 @@ function describePlanOp(op) {
 // ── 启动服务器 ──────────────────────────────────────────────
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`AI-Buddy API server running on http://127.0.0.1:${PORT}`);
+  // 启动 RSS 定时抓取（每 30 分钟）
+  startRssScheduler(30 * 60 * 1000);
 });

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
-import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2 } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2, Rss } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
@@ -7,6 +7,7 @@ const TasksPage = lazy(() => import('./TasksPage'));
 const MemosPage = lazy(() => import('./MemosPage'));
 const ReadingPage = lazy(() => import('./ReadingPage'));
 const DashboardPage = lazy(() => import('./DashboardPage'));
+const RssPage = lazy(() => import('./RssPage'));
 const ConfigContent = lazy(() => import('@/components/ConfigSection').then(m => ({ default: m.ConfigContent })));
 const NoteView = lazy(() => import('@/components/NoteView'));
 const SettingsCenter = lazy(() => import('@/pages/SettingsCenter').then(m => ({ default: m.SettingsCenter })));
@@ -27,6 +28,7 @@ const navItems = [
   { id: 'tasks', label: '任务', icon: CheckSquare },
   { id: 'memos', label: '备忘', icon: FileText },
   { id: 'reading', label: '阅读', icon: BookOpen },
+  { id: 'rss', label: '订阅', icon: Rss },
 ];
 
 const pageTitles = {
@@ -34,6 +36,7 @@ const pageTitles = {
   tasks: '任务',
   memos: '备忘',
   reading: '阅读',
+  rss: 'RSS 订阅',
   config: '配置',
 };
 
@@ -483,6 +486,12 @@ const Index = () => {
         return (
           <Suspense fallback={<TabLoader />}>
             <ReadingPage initialReadingId={pendingReadingId} onInitialReadingConsumed={() => setPendingReadingId(null)} />
+          </Suspense>
+        );
+      case 'rss':
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <RssPage />
           </Suspense>
         );
       default:
