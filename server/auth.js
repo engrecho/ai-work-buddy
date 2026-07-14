@@ -526,3 +526,83 @@ export async function changePassword(userId, oldPassword, newPassword) {
 
   return { success: true };
 }
+
+// ══════════════════════════════════════════════════════════════
+// 密码保险箱（Vault）—— AES-256-CBC 加密存储敏感信息
+// ══════════════════════════════════════════════════════════════
+
+// 独立密钥，不复用 JWT_SECRET（语义不同 + 轮换 JWT 会导致旧密文无法解密）
+const VAULT_ENCRYPTION_KEY = process.env.VAULT_ENCRYPTION_KEY || 'ai-buddy-vault-secret-2026';
+
+function encryptVault(plainText) {
+  if (!plainText) return '';
+  const iv = crypto.randomBytes(16);
+  const key = crypto.createHash('sha256').update(VAULT_ENCRYPTION_KEY).digest();
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  const enc = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
+  // 密文格式：base64(IV[16] + ciphertext)，与 encryptApiKey 一致
+  return Buffer.concat([iv, enc]).toString('base64');
+}
+
+function decryptVault(cipherB64) {
+  if (!cipherB64) return '';
+  const raw = Buffer.from(cipherB64, 'base64');
+  const iv = raw.subarray(0, 16);
+  const ciphertext = raw.subarray(16);
+  const key = crypto.createHash('sha256').update(VAULT_ENCRYPTION_KEY).digest();
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  const dec = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return dec.toString('utf8');
+}
+
+// ── Vault 解锁 Token（独立 JWT，1 小时有效）─────────────────
+// 用登录密码验证身份后签发，请求保险箱明文时需带 X-Vault-Token header
+const VAULT_TOKEN_EXPIRES_IN = '1h';
+
+export function generateVaultToken(user) {
+  return jwt.sign(
+    { id: user.id, username: user.username, vault: true },
+    JWT_SECRET,
+    { expiresIn: VAULT_TOKEN_EXPIRES_IN }
+  );
+}
+
+export function verifyVaultToken(token) {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!decoded.vault) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+// Vault 中间件：验证 X-Vault-Token，确保已解锁
+export function vaultAuthMiddleware(req, res, next) {
+  const vaultToken = req.headers['x-vault-token'];
+  if (!vaultToken) {
+    return res.status(401).json({
+      data: null,
+      error: { message: '保险箱未解锁，请先输入密码解锁' },
+    });
+  }
+  const decoded = verifyVaultToken(vaultToken);
+  if (!decoded) {
+    return res.status(401).json({
+      data: null,
+      error: { message: '解锁已过期，请重新输入密码' },
+    });
+  }
+  // 确保是当前登录用户
+  if (req.user && decoded.id !== req.user.id) {
+    return res.status(403).json({
+      data: null,
+      error: { message: '解锁令牌与当前用户不匹配' },
+    });
+  }
+  req.vaultUnlocked = true;
+  next();
+}
+
+export { encryptVault, decryptVault };
+

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
-import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2, Rss } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, FileText, BookOpen, NotebookPen, X, Minus, GripVertical, Maximize2, Rss, Heart, Lock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
@@ -8,6 +8,8 @@ const MemosPage = lazy(() => import('./MemosPage'));
 const ReadingPage = lazy(() => import('./ReadingPage'));
 const DashboardPage = lazy(() => import('./DashboardPage'));
 const RssPage = lazy(() => import('./RssPage'));
+const HealthPage = lazy(() => import('./HealthPage'));
+const VaultPage = lazy(() => import('./VaultPage'));
 const ConfigContent = lazy(() => import('@/components/ConfigSection').then(m => ({ default: m.ConfigContent })));
 const NoteView = lazy(() => import('@/components/NoteView'));
 const SettingsCenter = lazy(() => import('@/pages/SettingsCenter').then(m => ({ default: m.SettingsCenter })));
@@ -29,6 +31,8 @@ const navItems = [
   { id: 'memos', label: '备忘', icon: FileText },
   { id: 'reading', label: '阅读', icon: BookOpen },
   { id: 'rss', label: '订阅', icon: Rss },
+  { id: 'health', label: '健康', icon: Heart },
+  { id: 'vault', label: '保险箱', icon: Lock },
 ];
 
 const pageTitles = {
@@ -37,6 +41,8 @@ const pageTitles = {
   memos: '备忘',
   reading: '阅读',
   rss: 'RSS 订阅',
+  health: '健康档案',
+  vault: '密码保险箱',
   config: '配置',
 };
 
@@ -492,6 +498,18 @@ const Index = () => {
         return (
           <Suspense fallback={<TabLoader />}>
             <RssPage />
+          </Suspense>
+        );
+      case 'health':
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <HealthPage />
+          </Suspense>
+        );
+      case 'vault':
+        return (
+          <Suspense fallback={<TabLoader />}>
+            <VaultPage />
           </Suspense>
         );
       default:

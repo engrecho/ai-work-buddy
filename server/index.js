@@ -15,7 +15,8 @@ import {
   setAuthCookie, clearAuthCookie, registerUser, loginUser, getCurrentUser,
   updateUserProfile, changePassword,
   createApiKeyForUser, listApiKeysForUser, revokeApiKey, revealApiKey, getUserByApiKey,
-  superAdminMiddleware, authOrApiKeyMiddleware
+  superAdminMiddleware, authOrApiKeyMiddleware,
+  encryptVault, decryptVault, generateVaultToken, vaultAuthMiddleware
 } from './auth.js';
 import { parseShare, parseAndDownload, listOfflineFiles, resolveOfflinePath, redownload, deleteOfflineFiles, extractUrl, downloadFromParsedData } from './extract.js';
 import { getUserSetting, updateUserSetting } from './user-settings.js';
@@ -970,7 +971,9 @@ const ALLOWED_TABLES = new Set(Object.keys(TABLE_COLUMNS));
 const TABLES_WITH_USER_ID = new Set([
   'tasks', 'task_groups', 'task_members', 'task_tags', 'task_comments',
   'memos', 'task_notes', 'reading_items', 'quick_notes',
-  'rss_sources', 'rss_articles'
+  'rss_sources', 'rss_articles',
+  'health_profiles', 'health_visits', 'health_medications',
+  'vault_items'
 ]);
 
 function validateColumn(table, column) {
@@ -1324,6 +1327,267 @@ app.post('/api/batch', authMiddleware, async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════════
+// 密码保险箱（Vault）—— 加密存储敏感信息
+// ════════════════════════════════════════════════════════════════════
+
+// 解锁保险箱：用登录密码验证，签发 1 小时有效的 vault_token
+app.post('/api/vault/unlock', authMiddleware, async (req, res) => {
+  const { password } = req.body || {};
+  if (!password) {
+    return res.json({ data: null, error: { message: '请输入登录密码' } });
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT password_hash FROM users WHERE id = ? LIMIT 1',
+      [req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.json({ data: null, error: { message: '用户不存在' } });
+    }
+    const bcrypt = (await import('bcryptjs')).default;
+    const valid = await bcrypt.compare(password, rows[0].password_hash);
+    if (!valid) {
+      return res.json({ data: null, error: { message: '密码错误' } });
+    }
+    const vaultToken = generateVaultToken(req.user);
+    return res.json({
+      data: { vault_token: vaultToken, expires_in: 3600 },
+      error: null,
+    });
+  } catch (err) {
+    console.error('vault unlock error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 列出保险箱条目（返回元数据，不含明文密码）
+app.get('/api/vault/items', authMiddleware, async (req, res) => {
+  try {
+    const { category, keyword, is_active } = req.query;
+    const conditions = ['user_id = ? AND deleted_at IS NULL'];
+    const params = [req.user.id];
+    if (category && category !== 'all') {
+      conditions.push('category = ?');
+      params.push(category);
+    }
+    if (is_active !== undefined && is_active !== 'all') {
+      conditions.push('is_active = ?');
+      params.push(is_active === 'true' ? 1 : 0);
+    }
+    if (keyword) {
+      conditions.push('(title LIKE ? OR username LIKE ?)');
+      params.push(`%${keyword}%`, `%${keyword}%`);
+    }
+    const sql = `SELECT id, category, title, username, url, is_active, tags, created_at, updated_at
+                  FROM vault_items WHERE ${conditions.join(' AND ')}
+                  ORDER BY updated_at DESC`;
+    const [rows] = await pool.query(sql, params);
+    return res.json({ data: rows, error: null });
+  } catch (err) {
+    console.error('vault list error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 获取单个条目明文（需 vault_token）
+app.get('/api/vault/items/:id', authMiddleware, vaultAuthMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 无效' } });
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM vault_items WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1',
+      [id, req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.json({ data: null, error: { message: '条目不存在' } });
+    }
+    const item = rows[0];
+    let secret = '';
+    let notes = '';
+    try { secret = decryptVault(item.cipher_secret); } catch (e) { secret = '[解密失败]'; }
+    try { notes = item.cipher_notes ? decryptVault(item.cipher_notes) : ''; } catch (e) { notes = '[解密失败]'; }
+    return res.json({
+      data: {
+        ...item,
+        secret,
+        notes,
+        cipher_secret: undefined,
+        cipher_notes: undefined,
+      },
+      error: null,
+    });
+  } catch (err) {
+    console.error('vault get error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 创建条目（前端传明文，后端加密存储）
+app.post('/api/vault/items', authMiddleware, async (req, res) => {
+  const { category = 'password', title, username, secret, url, notes, tags, is_active = true } = req.body || {};
+  if (!title) {
+    return res.json({ data: null, error: { message: '标题不能为空' } });
+  }
+  if (!secret) {
+    return res.json({ data: null, error: { message: '密码/密钥不能为空' } });
+  }
+  try {
+    const cipherSecret = encryptVault(secret);
+    const cipherNotes = notes ? encryptVault(notes) : null;
+    const [result] = await pool.query(
+      `INSERT INTO vault_items (user_id, category, title, username, cipher_secret, url, cipher_notes, is_active, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, category, title, username || null, cipherSecret, url || null, cipherNotes, is_active ? 1 : 0, JSON.stringify(tags || [])]
+    );
+    return res.json({ data: { id: result.insertId }, error: null });
+  } catch (err) {
+    console.error('vault create error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 更新条目
+app.patch('/api/vault/items/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 无效' } });
+  }
+  const { category, title, username, secret, url, notes, tags, is_active } = req.body || {};
+  const updates = [];
+  const params = [];
+  if (category !== undefined) { updates.push('category = ?'); params.push(category); }
+  if (title !== undefined) { updates.push('title = ?'); params.push(title); }
+  if (username !== undefined) { updates.push('username = ?'); params.push(username); }
+  if (secret !== undefined) { updates.push('cipher_secret = ?'); params.push(encryptVault(secret)); }
+  if (url !== undefined) { updates.push('url = ?'); params.push(url); }
+  if (notes !== undefined) { updates.push('cipher_notes = ?'); params.push(notes ? encryptVault(notes) : null); }
+  if (tags !== undefined) { updates.push('tags = ?'); params.push(JSON.stringify(tags || [])); }
+  if (is_active !== undefined) { updates.push('is_active = ?'); params.push(is_active ? 1 : 0); }
+  if (updates.length === 0) {
+    return res.json({ data: null, error: { message: '没有需要更新的字段' } });
+  }
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  params.push(id, req.user.id);
+  try {
+    const [result] = await pool.query(
+      `UPDATE vault_items SET ${updates.join(', ')} WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+      params
+    );
+    if (result.affectedRows === 0) {
+      return res.json({ data: null, error: { message: '条目不存在或无权限' } });
+    }
+    return res.json({ data: { ok: true }, error: null });
+  } catch (err) {
+    console.error('vault update error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 软删除条目
+app.delete('/api/vault/items/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 无效' } });
+  }
+  try {
+    const [result] = await pool.query(
+      'UPDATE vault_items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    if (result.affectedRows === 0) {
+      return res.json({ data: null, error: { message: '条目不存在或无权限' } });
+    }
+    return res.json({ data: { ok: true }, error: null });
+  } catch (err) {
+    console.error('vault delete error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// 健康档案模块 —— 专用查询接口（基础 CRUD 走通用路由）
+// ════════════════════════════════════════════════════════════════════
+
+// 获取档案列表（含最近就诊 + 当前用药 + 下次就诊倒计时）
+app.get('/api/health/profiles/with-stats', authMiddleware, async (req, res) => {
+  try {
+    const [profiles] = await pool.query(
+      `SELECT * FROM health_profiles WHERE user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`,
+      [req.user.id]
+    );
+    for (const p of profiles) {
+      // 最近一次就诊
+      const [lastVisit] = await pool.query(
+        `SELECT id, visit_date, hospital, diagnosis FROM health_visits
+         WHERE profile_id = ? ORDER BY visit_date DESC LIMIT 1`,
+        [p.id]
+      );
+      p.last_visit = lastVisit[0] || null;
+      // 下次就诊
+      const [nextVisit] = await pool.query(
+        `SELECT id, next_visit_date, hospital FROM health_visits
+         WHERE profile_id = ? AND next_visit_date IS NOT NULL AND next_visit_date >= CURDATE()
+         ORDER BY next_visit_date ASC LIMIT 1`,
+        [p.id]
+      );
+      p.next_visit = nextVisit[0] || null;
+      // 当前用药数量
+      const [[medCount]] = await pool.query(
+        `SELECT COUNT(*) as count FROM health_medications
+         WHERE profile_id = ? AND status = 'active'`,
+        [p.id]
+      );
+      p.active_medication_count = medCount.count;
+      // 就诊总次数
+      const [[visitCount]] = await pool.query(
+        `SELECT COUNT(*) as count FROM health_visits WHERE profile_id = ?`,
+        [p.id]
+      );
+      p.visit_count = visitCount.count;
+    }
+    return res.json({ data: profiles, error: null });
+  } catch (err) {
+    console.error('health profiles stats error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 获取档案详情（含就诊记录 + 用药清单）
+app.get('/api/health/profiles/:id/detail', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.json({ data: null, error: { message: 'id 无效' } });
+  }
+  try {
+    const [profiles] = await pool.query(
+      'SELECT * FROM health_profiles WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1',
+      [id, req.user.id]
+    );
+    if (profiles.length === 0) {
+      return res.json({ data: null, error: { message: '档案不存在' } });
+    }
+    const profile = profiles[0];
+    const [visits] = await pool.query(
+      `SELECT * FROM health_visits WHERE profile_id = ? ORDER BY visit_date DESC`,
+      [id]
+    );
+    const [medications] = await pool.query(
+      `SELECT * FROM health_medications WHERE profile_id = ? ORDER BY status DESC, created_at DESC`,
+      [id]
+    );
+    return res.json({
+      data: { ...profile, visits, medications },
+      error: null,
+    });
+  } catch (err) {
+    console.error('health profile detail error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // ════════════════════════════════════════════════════════════
 // 通用 CRUD 路由
 // ════════════════════════════════════════════════════════════
@@ -1587,7 +1851,7 @@ app.patch('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     }
 
     // 自动更新 updated_at
-    const TABLES_WITH_UPDATED_AT = ['tasks', 'task_groups', 'memos', 'task_notes'];
+    const TABLES_WITH_UPDATED_AT = ['tasks', 'task_groups', 'memos', 'task_notes', 'health_profiles', 'health_medications', 'vault_items'];
     if (TABLES_WITH_UPDATED_AT.includes(table) && !overridePatch.updated_at) {
       setColumns.push('`updated_at` = CURRENT_TIMESTAMP');
     }
@@ -2241,7 +2505,7 @@ function buildUpdateSql(table, userId, id, patch) {
       setParams.push(prepareValue(table, key, value));
     }
   }
-  if (['tasks', 'task_groups', 'memos', 'task_notes'].includes(table) && !patch.updated_at) {
+  if (['tasks', 'task_groups', 'memos', 'task_notes', 'health_profiles', 'health_medications', 'vault_items'].includes(table) && !patch.updated_at) {
     setColumns.push('`updated_at` = CURRENT_TIMESTAMP');
   }
   if (setColumns.length === 0) return { sql: null, params: [] };
