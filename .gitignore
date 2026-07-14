@@ -6,8 +6,13 @@ build
 .env.*.local
 server/node_modules
 
+# 本地临时目录（测试产出、临时脚本等）
+_tmp/
+
 # 个人 / 测试产物，不入库
 .workbuddy/
+.playwright-cli/
+public/skill/
 *.mp4
 *.mov
 *.avi
