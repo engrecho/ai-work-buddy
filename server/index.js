@@ -1147,9 +1147,136 @@ function requireAuthForBusinessTable(req, res, next) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 批量查询接口（必须在通用 CRUD 路由之前注册，否则会被 /api/:table 拦截）
-// 一次 HTTP 请求执行多条 SQL，结果合并为单个响应
-// ══════════════════════════════════════════════════════════════
+// 部署状态查询接口（必须在通用 CRUD 路由之前注册）
+// 读取 deploy/.last-deploy.json 返回最近一次部署执行情况
+// ════════════════════════════════════════════════════════════
+
+app.get('/api/deploy/status', authMiddleware, async (req, res) => {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const deployDir = path.join(__dirname, '..', 'deploy');
+  const statusFile = path.join(deployDir, '.last-deploy.json');
+  const onceLogDir = path.join(deployDir, 'once', '.logs');
+
+  try {
+    // 1. 最近一次部署状态
+    let lastDeploy = null;
+    try {
+      lastDeploy = JSON.parse(fs.readFileSync(statusFile, 'utf-8'));
+    } catch {}
+
+    // 2. once 任务已执行记录
+    const doneFile = path.join(deployDir, 'once', '.done');
+    let doneTasks = [];
+    try { doneTasks = fs.readFileSync(doneFile, 'utf-8').trim().split('\n').filter(Boolean); }
+    catch {}
+
+    // 3. once 任务目录下的所有脚本
+    let pendingTasks = [];
+    try {
+      pendingTasks = fs.readdirSync(path.join(deployDir, 'once'))
+        .filter(f => f.endsWith('.sh'))
+        .map(f => ({
+          name: f,
+          executed: doneTasks.includes(f),
+        }));
+    } catch {}
+
+    // 4. once 日志列表（按修改时间倒序）
+    let onceLogs = [];
+    try {
+      onceLogs = fs.readdirSync(onceLogDir)
+        .filter(f => f.endsWith('.log'))
+        .map(f => {
+          const stat = fs.statSync(path.join(onceLogDir, f));
+          return { name: f.replace('.log', ''), size: stat.size, mtime: stat.mtime.toISOString() };
+        })
+        .sort((a, b) => new Date(b.mtime) - new Date(a.mtime))
+        .slice(0, 10);
+    } catch {}
+
+    // 5. 历史部署记录（最近 10 份）
+    const historyDir = path.join(deployDir, '.deploys');
+    let history = [];
+    try {
+      history = fs.readdirSync(historyDir)
+        .filter(f => f.endsWith('.json'))
+        .map(f => {
+          const stat = fs.statSync(path.join(historyDir, f));
+          return { file: f, mtime: stat.mtime.toISOString() };
+        })
+        .sort((a, b) => new Date(b.mtime) - new Date(a.mtime))
+        .slice(0, 10);
+    } catch {}
+
+    // 6. 实时 git HEAD
+    let gitHead = null;
+    try {
+      const { execSync } = await import('child_process');
+      const projectDir = path.join(__dirname, '..');
+      gitHead = {
+        commit: execSync('git rev-parse --short HEAD', { cwd: projectDir, encoding: 'utf-8' }).trim(),
+        message: execSync('git log -1 --format=%s', { cwd: projectDir, encoding: 'utf-8' }).trim(),
+        author: execSync('git log -1 --format=%an', { cwd: projectDir, encoding: 'utf-8' }).trim(),
+        time: execSync('git log -1 --format=%ci', { cwd: projectDir, encoding: 'utf-8' }).trim(),
+      };
+    } catch {}
+
+    return res.json({
+      data: {
+        last_deploy: lastDeploy,
+        git_head: gitHead,
+        once_tasks: pendingTasks,
+        once_logs: onceLogs,
+        history,
+      },
+      error: null,
+    });
+  } catch (err) {
+    console.error('deploy/status error:', err);
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 获取某个 once 任务的完整日志
+app.get('/api/deploy/once-log/:name', authMiddleware, async (req, res) => {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const logFile = path.join(__dirname, '..', 'deploy', 'once', '.logs', `${req.params.name}.log`);
+  // 防路径穿越
+  if (!logFile.startsWith(path.join(__dirname, '..', 'deploy', 'once', '.logs'))) {
+    return res.json({ data: null, error: { message: '非法路径' } });
+  }
+  try {
+    if (!fs.existsSync(logFile)) {
+      return res.json({ data: null, error: { message: '日志不存在' } });
+    }
+    const content = fs.readFileSync(logFile, 'utf-8');
+    return res.json({ data: { name: req.params.name, content }, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+// 获取历史部署详情
+app.get('/api/deploy/history/:file', authMiddleware, async (req, res) => {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const historyDir = path.join(__dirname, '..', 'deploy', '.deploys');
+  const filePath = path.join(historyDir, req.params.file);
+  // 防路径穿越：只允许 .json 文件名
+  if (!/^[\w.-]+\.json$/.test(req.params.file) || !filePath.startsWith(historyDir)) {
+    return res.json({ data: null, error: { message: '非法路径' } });
+  }
+  try {
+    if (!fs.existsSync(filePath)) {
+      return res.json({ data: null, error: { message: '历史记录不存在' } });
+    }
+    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return res.json({ data: content, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
+
 
 app.post('/api/batch', authMiddleware, async (req, res) => {
   const t0 = Date.now();

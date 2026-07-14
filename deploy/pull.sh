@@ -65,6 +65,21 @@ fi
 # 导出给 once 子脚本用
 export PROJECT_DIR DB_USER DB_PASSWORD DB_NAME NVM_DIR
 
+# ── 部署状态记录 ─────────────────────────────────────────────
+# 通过 record-status.js 维护 deploy/.last-deploy.json
+# 后端 /api/deploy/status 接口读取此文件返回部署执行情况
+RECORD_STATUS="$PROJECT_DIR/deploy/record-status.js"
+ONCE_LOG_DIR="$PROJECT_DIR/deploy/once/.logs"
+mkdir -p "$ONCE_LOG_DIR"
+
+STEP_START=0
+step_begin() { STEP_START=$(date +%s%3N); }
+step_done() {
+  local name="$1" status="$2" err="${3:-}"
+  local dur=$(( $(date +%s%3N) - STEP_START ))
+  node "$RECORD_STATUS" step "$name" "$status" "$dur" "$err" 2>/dev/null || true
+}
+
 # ── 日志函数 ─────────────────────────────────────────────────
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -97,6 +112,7 @@ fi
 # 1.1 尝试拉取代码（直连 → 代理 fallback）
 GIT_OK=false
 
+step_begin
 log "  → 尝试直连 GitHub..."
 if git fetch --all 2>>"$LOG_FILE"; then
   GIT_OK=true
@@ -116,10 +132,12 @@ else
 fi
 
 if [ "$GIT_OK" = false ]; then
+  step_done "git_pull" "failed" "无法从 GitHub 拉取代码"
   log "  ✗ 无法从 GitHub 拉取代码，终止部署"
   log "  提示: 检查服务器网络 / GitHub 状态 / 代理可用性"
   exit 1
 fi
+step_done "git_pull" "success"
 
 # 1.2 强制同步到远程版本
 git reset --hard "origin/$REPO_BRANCH"
@@ -130,6 +148,9 @@ COMMIT_TIME=$(git log -1 --format='%ci')
 log "  当前版本: $CURRENT_COMMIT"
 log "  提交信息: $COMMIT_MSG"
 log "  作者: $COMMIT_AUTHOR  时间: $COMMIT_TIME"
+
+# 初始化部署状态记录
+node "$RECORD_STATUS" start "$CURRENT_COMMIT" "$COMMIT_MSG" "$COMMIT_AUTHOR" "$COMMIT_TIME" 2>/dev/null || true
 
 log "========== Phase 1 完成 ✅ =========="
 log ""
@@ -142,34 +163,44 @@ log "========== Phase 2: 部署任务 =========="
 # ── 2.1 安装依赖 ─────────────────────────────────────────────
 log ""
 log "[2.1] 安装前端依赖..."
+step_begin
 if yarn install --silent 2>>"$LOG_FILE"; then
   log "  ✓ 前端依赖安装完成"
+  step_done "install_frontend" "success"
 else
   log "  ✗ 前端依赖安装失败（继续执行后续步骤）"
+  step_done "install_frontend" "failed" "yarn install 失败"
 fi
 
 log "[2.1] 安装后端依赖..."
+step_begin
 cd "$PROJECT_DIR/server"
 if yarn install --silent 2>>"$LOG_FILE"; then
   log "  ✓ 后端依赖安装完成"
+  step_done "install_backend" "success"
 else
   log "  ✗ 后端依赖安装失败（继续执行后续步骤）"
+  step_done "install_backend" "failed" "yarn install 失败"
 fi
 cd "$PROJECT_DIR"
 
 # ── 2.2 构建前端 ─────────────────────────────────────────────
 log ""
 log "[2.2] 构建前端..."
+step_begin
 if yarn build 2>>"$LOG_FILE"; then
   log "  ✓ 构建完成"
   log "  build 目录: $(ls "$PROJECT_DIR/build/" 2>/dev/null | head -5 | tr '\n' ' ')"
+  step_done "build_frontend" "success"
 else
   log "  ✗ 构建失败（继续执行后续步骤）"
+  step_done "build_frontend" "failed" "yarn build 失败"
 fi
 
 # ── 2.3 重启 PM2 后端 ─────────────────────────────────────────
 log ""
 log "[2.3] 重启 PM2 后端服务..."
+step_begin
 # cluster 模式下 pm2 reload 可能缓存旧代码，用 delete + start 彻底重启
 pm2 delete ai-buddy-api 2>/dev/null || true
 if pm2 start ecosystem.config.cjs --update-env 2>>"$LOG_FILE"; then
@@ -180,11 +211,14 @@ if pm2 start ecosystem.config.cjs --update-env 2>>"$LOG_FILE"; then
   HEALTH=$(curl -s --max-time 5 http://127.0.0.1:3000/api/health 2>/dev/null)
   if [ -n "$HEALTH" ]; then
     log "  ✓ 后端已启动: $HEALTH"
+    step_done "pm2_restart" "success"
   else
     log "  ⚠ 后端 5 秒后仍无响应，请检查 pm2 logs"
+    step_done "pm2_restart" "failed" "后端无响应"
   fi
 else
   log "  ✗ PM2 重启失败"
+  step_done "pm2_restart" "failed" "pm2 start 失败"
 fi
 
 # ── 2.4 SQL 迁移（增量）──────────────────────────────────────
@@ -194,7 +228,9 @@ MIGRATE_DIR="$PROJECT_DIR/deploy"
 APPLIED_FILE="$MIGRATE_DIR/.applied_migrations"
 touch "$APPLIED_FILE"
 MIGRATE_COUNT=0
+MIGRATE_FAIL=0
 
+step_begin
 shopt -s nullglob
 for sql_file in "$MIGRATE_DIR"/migrate-*.sql; do
   fname=$(basename "$sql_file")
@@ -204,22 +240,27 @@ for sql_file in "$MIGRATE_DIR"/migrate-*.sql; do
       echo "$fname" >> "$APPLIED_FILE"
       log "    ✓ $fname 成功"
       MIGRATE_COUNT=$((MIGRATE_COUNT + 1))
+      node "$RECORD_STATUS" migrate-detail "$fname" "success" 2>/dev/null || true
     else
       log "    ✗ $fname 失败（查看 $LOG_FILE）"
+      MIGRATE_FAIL=$((MIGRATE_FAIL + 1))
+      node "$RECORD_STATUS" migrate-detail "$fname" "failed" 2>/dev/null || true
     fi
   else
     log "  · $fname 已应用，跳过"
   fi
 done
 shopt -u nullglob
-log "  本次迁移: $MIGRATE_COUNT 个"
+log "  本次迁移: $MIGRATE_COUNT 个成功, $MIGRATE_FAIL 个失败"
+node "$RECORD_STATUS" migrate "$MIGRATE_COUNT" "$MIGRATE_FAIL" 2>/dev/null || true
+step_done "sql_migrate" "success"
 
 # ── 2.5 一次性运维任务 ────────────────────────────────────────
 log ""
 log "[2.5] 一次性运维任务 (deploy/once/*.sh)..."
 ONCE_DIR="$PROJECT_DIR/deploy/once"
 ONCE_DONE="$ONCE_DIR/.done"
-mkdir -p "$ONCE_DIR"
+mkdir -p "$ONCE_DIR" "$ONCE_LOG_DIR"
 touch "$ONCE_DONE"
 ONCE_COUNT=0
 
@@ -228,12 +269,21 @@ for task_file in "$ONCE_DIR"/*.sh; do
   fname=$(basename "$task_file")
   if ! grep -qx "$fname" "$ONCE_DONE" 2>/dev/null; then
     log "  → 执行: $fname"
-    if bash "$task_file" >> "$LOG_FILE" 2>&1; then
+    ONCE_TASK_LOG="$ONCE_LOG_DIR/${fname}.log"
+    ONCE_TASK_START=$(date +%s%3N)
+    # 输出同时写入独立日志（供接口返回）和主部署日志
+    if bash "$task_file" > "$ONCE_TASK_LOG" 2>&1; then
+      cat "$ONCE_TASK_LOG" >> "$LOG_FILE"
       echo "$fname" >> "$ONCE_DONE"
       log "    ✓ $fname 成功"
       ONCE_COUNT=$((ONCE_COUNT + 1))
+      ONCE_DUR=$(( $(date +%s%3N) - ONCE_TASK_START ))
+      node "$RECORD_STATUS" once "$fname" "success" "$ONCE_DUR" "$ONCE_TASK_LOG" 2>/dev/null || true
     else
+      cat "$ONCE_TASK_LOG" >> "$LOG_FILE"
       log "    ✗ $fname 失败（下次部署会重试）"
+      ONCE_DUR=$(( $(date +%s%3N) - ONCE_TASK_START ))
+      node "$RECORD_STATUS" once "$fname" "failed" "$ONCE_DUR" "$ONCE_TASK_LOG" 2>/dev/null || true
     fi
   else
     log "  · $fname 已执行，跳过"
@@ -241,10 +291,12 @@ for task_file in "$ONCE_DIR"/*.sh; do
 done
 shopt -u nullglob
 log "  本次执行一次性任务: $ONCE_COUNT 个"
+step_done "once_tasks" "success"
 
 # ── 2.6 同步 Skills + 打包 buddy-skill ────────────────────────
 log ""
 log "[2.6] 同步 Skills + 打包 buddy-skill..."
+step_begin
 
 # 同步 Skills 到 openclaw
 if [ -f "$PROJECT_DIR/deploy/sync-skills.sh" ]; then
@@ -277,6 +329,10 @@ if tar -czf "$SKILL_TARBALL" \
 else
   log "    ✗ 打包失败"
 fi
+step_done "skills_sync" "success"
+
+# ── 记录部署完成状态 ──────────────────────────────────────────
+node "$RECORD_STATUS" end 2>/dev/null || true
 
 # ============================================================
 log ""

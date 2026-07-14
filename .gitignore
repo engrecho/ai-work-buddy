@@ -21,4 +21,7 @@ CLAUDE.md
 
 # 部署执行记录（本地生成，不入库）
 deploy/once/.done
+deploy/once/.logs/
 deploy/.applied_migrations
+deploy/.last-deploy.json
+deploy/.deploys/
