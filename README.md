@@ -84,7 +84,9 @@ yarn dev     # 启动前端（端口 8080）
 
 ## 宝塔部署（生产模式）
 
-完整步骤见 [DEPLOY.md](DEPLOY.md)。从零开始大约 30 分钟可完成上线。
+完整步骤见 [docs/DEPLOY_BAOTA.md](docs/DEPLOY_BAOTA.md)。从零开始大约 30 分钟可完成上线。
+
+部署系统的运行机制（pull.sh 工作流、once 任务、状态查询接口）见 [deploy/README.md](deploy/README.md)。
 
 简要流程：
 1. 在宝塔创建 MySQL 数据库 `buddy`
@@ -93,6 +95,34 @@ yarn dev     # 启动前端（端口 8080）
 4. 构建前端静态文件
 5. 配置 Nginx 代理（前端静态托管 + `/api/` 反向代理到 Express）
 6. （可选）申请 Let's Encrypt 证书强制 HTTPS
+
+## 文档导航
+
+项目文档分两层，按你想做的事找对应入口：
+
+**AI-Buddy 产品本身**（[docs/](docs/) 目录）
+
+| 文档 | 看它做什么 |
+|------|-----------|
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | 日常使用：任务、备忘、阅读、随记怎么用 |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 改代码：架构、API 端点总览、新增功能流程 |
+| [docs/DATABASE.md](docs/DATABASE.md) | 看表结构、字段、索引、迁移 |
+| [docs/DEPLOY_BAOTA.md](docs/DEPLOY_BAOTA.md) | 从零部署一套新环境 |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 502 / 数据库 / Nginx 等常见问题排查 |
+
+**部署系统**（[deploy/](deploy/) 目录）
+
+[deploy/README.md](deploy/README.md) —— 部署机制、once 任务、SQL 迁移、部署状态查询接口、安全模型。面向「已部署、想理解或排查部署」的人。
+
+**buddy-skill（独立可分发的 SKILL 工具，自包含文档）**
+
+`buddy-skill/` 会被用户 `cp -r` 到别处单独使用，所以它的文档**必须跟着它走**，不放在项目 `docs/` 里。
+
+| 文档 | 看它做什么 |
+|------|-----------|
+| [buddy-skill/SKILL.md](buddy-skill/SKILL.md) | AI 加载入口（Claude/GPT 读取的描述文件） |
+| [buddy-skill/README.md](buddy-skill/README.md) | 安装、配置、CLI 用法、安全模型 |
+| [buddy-skill/docs/API_REFERENCE.md](buddy-skill/docs/API_REFERENCE.md) | SKILL API 完整接口说明（请求/响应/错误码） |
 
 ## 项目结构
 

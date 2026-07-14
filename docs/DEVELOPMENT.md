@@ -292,7 +292,9 @@ CRUD 行为与 Supabase PostgREST 类似（实际上是为了兼容历史 import
 
 ### B. SKILL v1（外部工具用，挂在 `/api/v1/*`）
 
-供 `buddy-skill` 等外部工具使用。鉴权用 Header `X-API-Key: buddy_xxx...`。完整参考见 `buddy-skill/SKILL.md`。
+供 `buddy-skill` 等外部工具使用。鉴权用 Header `X-API-Key: buddy_xxx...`。
+
+> 下表是接口总览。**完整请求/响应格式、参数说明、错误码、示例**见 [buddy-skill/docs/API_REFERENCE.md](../buddy-skill/docs/API_REFERENCE.md)——那是 SKILL API 的唯一权威文档，本表仅供后端开发者快速定位路由。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
