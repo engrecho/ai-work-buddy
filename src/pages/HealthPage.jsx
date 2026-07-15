@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Heart, Plus, Calendar, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Upload, Image as ImageIcon } from 'lucide-react';
+import { Heart, Plus, Calendar, Pill, ChevronLeft, Trash2, Clock, AlertCircle, X, Camera } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+
+// ════════════════════════════════════════════════════════════════════
+// 设计系统（统一字号 / 间距 / 触摸目标）
+// 移动端优先：所有可点击元素最小 36px，字号统一用 Tailwind 标准档
+//   text-xs(12px)  = 标签 / 元信息
+//   text-sm(14px)  = 正文 / 卡片标题
+//   text-base(16px)= 页面标题
+//   禁止使用 text-[10px] / text-[11px] / text-[9px] 等任意值
+// ════════════════════════════════════════════════════════════════════
 
 // ── API 工具 ────────────────────────────────────────────────
 function getAuthHeaders(json = false) {
@@ -94,17 +103,20 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
-// 格式化日期区间
 function formatDateRange(start, end) {
   if (!start && !end) return '';
   if (start && end) return `${formatDate(start)} ~ ${formatDate(end)}`;
   return formatDate(start || end);
 }
 
+function genderText(g) {
+  return g === 'male' ? '男' : g === 'female' ? '女' : '';
+}
+
 // ════════════════════════════════════════════════════════════════════
-// 图片上传组件（单图模式）
+// 单图上传组件（药物照片）— 移动端响应式缩放
 // ════════════════════════════════════════════════════════════════════
-function SingleImageUpload({ value, onChange, label = '图片', size = 'md' }) {
+function SingleImageUpload({ value, onChange, label = '图片' }) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
 
@@ -118,21 +130,24 @@ function SingleImageUpload({ value, onChange, label = '图片', size = 'md' }) {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const sizeClass = size === 'sm' ? 'w-16 h-16' : 'w-24 h-24';
-
   return (
     <div>
-      {label && <label className="text-xs text-gray-500 mb-1 block">{label}</label>}
+      {label && <label className="text-xs text-gray-500 mb-1.5 block">{label}</label>}
       <div className="flex items-center gap-3">
         {value ? (
-          <div className="relative group">
-            <img src={value} alt="预览" className={`${sizeClass} rounded-lg object-cover border border-gray-200`} />
+          <div className="relative group flex-shrink-0">
+            <img
+              src={value}
+              alt="预览"
+              className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover border border-gray-200"
+            />
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md transition-transform active:scale-90"
+              aria-label="删除图片"
             >
-              <X className="w-3 h-3" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         ) : (
@@ -140,9 +155,16 @@ function SingleImageUpload({ value, onChange, label = '图片', size = 'md' }) {
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className={`${sizeClass} rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-colors flex-shrink-0`}
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-colors flex-shrink-0 active:scale-95"
           >
-            {uploading ? <span className="text-xs">上传中</span> : <Upload className="w-5 h-5" />}
+            {uploading ? (
+              <span className="text-xs">上传中</span>
+            ) : (
+              <>
+                <Camera className="w-5 h-5" />
+                <span className="text-xs">添加</span>
+              </>
+            )}
           </button>
         )}
         <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
@@ -152,7 +174,7 @@ function SingleImageUpload({ value, onChange, label = '图片', size = 'md' }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 多图上传组件（就诊附件，支持备注）
+// 多图上传组件（就诊附件，支持备注）— 移动端优化
 // ════════════════════════════════════════════════════════════════════
 function MultiImageUpload({ items = [], onChange }) {
   const [uploading, setUploading] = useState(false);
@@ -162,12 +184,12 @@ function MultiImageUpload({ items = [], onChange }) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     setUploading(true);
+    const newItems = [...items];
     for (const file of files) {
       const url = await uploadHealthImage(file);
-      if (url) {
-        onChange([...items, { url, note: '' }]);
-      }
+      if (url) newItems.push({ url, note: '' });
     }
+    onChange(newItems);
     setUploading(false);
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -182,32 +204,37 @@ function MultiImageUpload({ items = [], onChange }) {
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center justify-between mb-2">
         <label className="text-xs text-gray-500">附件图片</label>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+          className="text-xs text-[#5a7a00] hover:text-[#2d4a00] flex items-center gap-1 px-2 py-1 rounded-md hover:bg-[#bbea3b]/20 transition-colors active:scale-95"
         >
-          <Plus className="w-3 h-3" /> {uploading ? '上传中...' : '添加图片'}
+          <Plus className="w-3.5 h-3.5" /> {uploading ? '上传中...' : '添加图片'}
         </button>
       </div>
       <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFile} className="hidden" />
       {items.length > 0 && (
         <div className="space-y-2">
           {items.map((item, idx) => (
-            <div key={idx} className="flex gap-2 items-start p-2 rounded-md bg-gray-50">
-              <img src={item.url} alt={`附件${idx + 1}`} className="w-14 h-14 rounded-md object-cover flex-shrink-0" />
+            <div key={idx} className="flex gap-2 items-start p-2 rounded-lg bg-gray-50">
+              <img src={item.url} alt={`附件${idx + 1}`} className="w-12 h-12 sm:w-14 sm:h-14 rounded-md object-cover flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <Input
                   value={item.note || ''}
                   onChange={e => updateNote(idx, e.target.value)}
                   placeholder="图片备注（可选）"
-                  className="text-xs h-7"
+                  className="text-xs h-8"
                 />
               </div>
-              <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-500 flex-shrink-0 mt-1">
+              <button
+                type="button"
+                onClick={() => removeItem(idx)}
+                className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-500 hover:bg-red-50 rounded-md flex-shrink-0 transition-colors active:scale-90"
+                aria-label="删除"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -219,14 +246,26 @@ function MultiImageUpload({ items = [], onChange }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 图片预览 Modal（点击放大）
+// 图片预览 Modal — 移动端支持双指缩放
 // ════════════════════════════════════════════════════════════════════
 function ImagePreviewModal({ src, onClose }) {
   if (!src) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
-      <img src={src} alt="预览" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
-      <button className="absolute top-4 right-4 w-10 h-10 bg-white/20 text-white rounded-full flex items-center justify-center hover:bg-white/30">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 touch-manipulation"
+      onClick={onClose}
+    >
+      <img
+        src={src}
+        alt="预览"
+        className="max-w-[92vw] max-h-[88vh] object-contain rounded-lg"
+        onClick={e => e.stopPropagation()}
+      />
+      <button
+        className="absolute top-4 right-4 w-10 h-10 bg-white/20 text-white rounded-full flex items-center justify-center hover:bg-white/30 transition-colors active:scale-90"
+        onClick={onClose}
+        aria-label="关闭"
+      >
         <X className="w-5 h-5" />
       </button>
     </div>
@@ -234,7 +273,7 @@ function ImagePreviewModal({ src, onClose }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 药物状态 Badge
+// 药物状态 Badge — 统一样式
 // ════════════════════════════════════════════════════════════════════
 function MedicationStatusBadge({ status }) {
   if (status === 'active') return <Badge className="text-xs bg-green-100 text-green-700 hover:bg-green-100">服用中</Badge>;
@@ -244,7 +283,21 @@ function MedicationStatusBadge({ status }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 档案表单弹窗
+// 表单字段组件 — 统一 label + 内容布局
+// ════════════════════════════════════════════════════════════════════
+function Field({ label, required, children, className = '' }) {
+  return (
+    <div className={className}>
+      <label className="text-xs text-gray-500 mb-1.5 block">
+        {label}{required && <span className="text-red-400 ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 档案表单弹窗 — 移动端单列、桌面端双列
 // ════════════════════════════════════════════════════════════════════
 function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
   const [form, setForm] = useState({
@@ -267,21 +320,21 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
     onSubmit(cleanForm(form));
   };
 
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base">{initial ? '编辑档案' : '新建健康档案'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">患者姓名 *</label>
-              <Input value={form.patient_name} onChange={e => setForm({ ...form, patient_name: e.target.value })} placeholder="如：张三 / 父亲" />
-            </div>
-            <div className="w-full sm:w-28 flex-shrink-0">
-              <label className="text-xs text-gray-500 mb-1 block">性别</label>
-              <Select value={form.gender} onValueChange={v => setForm({ ...form, gender: v })}>
+        <div className="space-y-4 py-2">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="患者姓名" required className="flex-1 min-w-0">
+              <Input value={form.patient_name} onChange={e => set('patient_name', e.target.value)} placeholder="如：张三 / 父亲" />
+            </Field>
+            <Field label="性别" className="w-full sm:w-28 flex-shrink-0">
+              <Select value={form.gender} onValueChange={v => set('gender', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="male">男</SelectItem>
@@ -289,42 +342,39 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
                   <SelectItem value="unknown">未知</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">出生日期</label>
-              <Input type="date" value={form.birth_date || ''} onChange={e => setForm({ ...form, birth_date: e.target.value })} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">状态</label>
-              <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="出生日期" className="flex-1 min-w-0">
+              <Input type="date" value={form.birth_date || ''} onChange={e => set('birth_date', e.target.value)} />
+            </Field>
+            <Field label="状态" className="flex-1 min-w-0">
+              <Select value={form.status} onValueChange={v => set('status', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">跟踪中</SelectItem>
                   <SelectItem value="archived">已归档</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
           </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">疾病名称 *</label>
-            <Input value={form.disease_name} onChange={e => setForm({ ...form, disease_name: e.target.value })} placeholder="如：高血压 / 2型糖尿病" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">标识颜色</label>
+          <Field label="疾病名称" required>
+            <Input value={form.disease_name} onChange={e => set('disease_name', e.target.value)} placeholder="如：高血压 / 2型糖尿病" />
+          </Field>
+          <Field label="标识颜色">
             <div className="flex gap-2 flex-wrap">
               {COLOR_OPTIONS.map(c => (
-                <button key={c} type="button" onClick={() => setForm({ ...form, color: c })}
-                  className={`w-7 h-7 rounded-md transition-transform hover:scale-110 ${form.color === c ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
-                  style={{ backgroundColor: c }} />
+                <button key={c} type="button" onClick={() => set('color', c)}
+                  className={`w-8 h-8 rounded-md transition-transform active:scale-90 hover:scale-110 ${form.color === c ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
+                  style={{ backgroundColor: c }}
+                  aria-label={`颜色 ${c}`}
+                />
               ))}
             </div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">备注</label>
-            <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="过敏史、特殊注意等" />
-          </div>
+          </Field>
+          <Field label="备注">
+            <Textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="过敏史、特殊注意等" />
+          </Field>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
@@ -336,7 +386,7 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 就诊记录表单
+// 就诊记录表单 — 移动端单列
 // ════════════════════════════════════════════════════════════════════
 function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
   const [form, setForm] = useState({
@@ -373,71 +423,60 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
     onSubmit(cleaned);
   };
 
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-2xl mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base">{initial ? '编辑就诊记录' : '新增就诊记录'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">就诊日期 *</label>
-              <Input type="date" value={form.visit_date || ''} onChange={e => setForm({ ...form, visit_date: e.target.value })} />
-            </div>
+        <div className="space-y-4 py-2">
+          <Field label="就诊日期" required>
+            <Input type="date" value={form.visit_date || ''} onChange={e => set('visit_date', e.target.value)} />
+          </Field>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="医院" className="flex-1 min-w-0">
+              <Input value={form.hospital || ''} onChange={e => set('hospital', e.target.value)} placeholder="如：市第一人民医院" />
+            </Field>
+            <Field label="科室" className="w-full sm:w-32 flex-shrink-0">
+              <Input value={form.department || ''} onChange={e => set('department', e.target.value)} placeholder="如：心内科" />
+            </Field>
+            <Field label="医生" className="w-full sm:w-32 flex-shrink-0">
+              <Input value={form.doctor || ''} onChange={e => set('doctor', e.target.value)} />
+            </Field>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">医院</label>
-              <Input value={form.hospital || ''} onChange={e => setForm({ ...form, hospital: e.target.value })} placeholder="如：市第一人民医院" />
-            </div>
-            <div className="w-full sm:w-32 flex-shrink-0">
-              <label className="text-xs text-gray-500 mb-1 block">科室</label>
-              <Input value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="如：心内科" />
-            </div>
-            <div className="w-full sm:w-32 flex-shrink-0">
-              <label className="text-xs text-gray-500 mb-1 block">医生</label>
-              <Input value={form.doctor || ''} onChange={e => setForm({ ...form, doctor: e.target.value })} />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">主诉</label>
-            <Input value={form.chief_complaint || ''} onChange={e => setForm({ ...form, chief_complaint: e.target.value })} placeholder="如：头晕、胸闷一周" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">诊断结果</label>
-            <Textarea value={form.diagnosis || ''} onChange={e => setForm({ ...form, diagnosis: e.target.value })} rows={2} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">处方 / 用药方案</label>
-            <Textarea value={form.prescription || ''} onChange={e => setForm({ ...form, prescription: e.target.value })} rows={3} placeholder="医生开的药、剂量、用法" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">检查报告</label>
-            <Textarea value={form.examination || ''} onChange={e => setForm({ ...form, examination: e.target.value })} rows={3} placeholder="化验结果、检查所见" />
+          <Field label="主诉">
+            <Input value={form.chief_complaint || ''} onChange={e => set('chief_complaint', e.target.value)} placeholder="如：头晕、胸闷一周" />
+          </Field>
+          <Field label="诊断结果">
+            <Textarea value={form.diagnosis || ''} onChange={e => set('diagnosis', e.target.value)} rows={2} />
+          </Field>
+          <Field label="处方 / 用药方案">
+            <Textarea value={form.prescription || ''} onChange={e => set('prescription', e.target.value)} rows={3} placeholder="医生开的药、剂量、用法" />
+          </Field>
+          <Field label="检查报告">
+            <Textarea value={form.examination || ''} onChange={e => set('examination', e.target.value)} rows={3} placeholder="化验结果、检查所见" />
+          </Field>
+
+          {/* 下次就诊日期区间（非必填） */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="下次就诊（开始）" className="flex-1 min-w-0">
+              <Input type="date" value={form.next_visit_date || ''} onChange={e => set('next_visit_date', e.target.value)} />
+            </Field>
+            <Field label="下次就诊（结束）" className="flex-1 min-w-0">
+              <Input type="date" value={form.next_visit_date_end || ''} onChange={e => set('next_visit_date_end', e.target.value)} />
+            </Field>
           </div>
 
-          {/* 下次就诊日期区间 */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">下次就诊（开始）</label>
-              <Input type="date" value={form.next_visit_date || ''} onChange={e => setForm({ ...form, next_visit_date: e.target.value })} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">下次就诊（结束）</label>
-              <Input type="date" value={form.next_visit_date_end || ''} onChange={e => setForm({ ...form, next_visit_date_end: e.target.value })} />
-            </div>
-          </div>
-
-          <div className="w-full sm:w-40">
-            <label className="text-xs text-gray-500 mb-1 block">费用（元）</label>
-            <Input type="number" step="0.01" value={form.cost || ''} onChange={e => setForm({ ...form, cost: e.target.value })} placeholder="0.00" />
-          </div>
+          <Field label="费用（元）">
+            <Input type="number" step="0.01" value={form.cost || ''} onChange={e => set('cost', e.target.value)} placeholder="0.00" className="max-w-[200px]" />
+          </Field>
 
           {/* 附件图片 */}
           <MultiImageUpload
             items={form.attachment_urls || []}
-            onChange={items => setForm({ ...form, attachment_urls: items })}
+            onChange={items => set('attachment_urls', items)}
           />
         </div>
         <DialogFooter>
@@ -450,7 +489,7 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 药物表单
+// 药物表单 — 移动端单列
 // ════════════════════════════════════════════════════════════════════
 function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, visitId }) {
   const [form, setForm] = useState({
@@ -475,50 +514,46 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
     onSubmit(cleaned);
   };
 
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base">{initial ? '编辑药物' : '新增药物'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">药物名称 *</label>
-            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="如：阿司匹林肠溶片" />
-          </div>
+        <div className="space-y-4 py-2">
+          <Field label="药物名称" required>
+            <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="如：阿司匹林肠溶片" />
+          </Field>
 
           {/* 药物图片 */}
           <SingleImageUpload
             value={form.photo_url || ''}
-            onChange={url => setForm({ ...form, photo_url: url })}
+            onChange={url => set('photo_url', url)}
             label="药物图片"
           />
 
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">用量</label>
-            <Input value={form.dosage || ''} onChange={e => setForm({ ...form, dosage: e.target.value })} placeholder="如：每次1片，每日3次，饭后服" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">用药说明</label>
-            <Textarea value={form.usage_instruction || ''} onChange={e => setForm({ ...form, usage_instruction: e.target.value })} rows={2} placeholder="注意事项、禁忌等" />
-          </div>
+          <Field label="用量">
+            <Input value={form.dosage || ''} onChange={e => set('dosage', e.target.value)} placeholder="如：每次1片，每日3次，饭后服" />
+          </Field>
+          <Field label="用药说明">
+            <Textarea value={form.usage_instruction || ''} onChange={e => set('usage_instruction', e.target.value)} rows={2} placeholder="注意事项、禁忌等" />
+          </Field>
 
           {/* 日期可空 */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">开始日期</label>
-              <Input type="date" value={form.start_date || ''} onChange={e => setForm({ ...form, start_date: e.target.value })} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">结束日期</label>
-              <Input type="date" value={form.end_date || ''} onChange={e => setForm({ ...form, end_date: e.target.value })} />
-            </div>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Field label="开始日期" className="flex-1 min-w-0">
+              <Input type="date" value={form.start_date || ''} onChange={e => set('start_date', e.target.value)} />
+            </Field>
+            <Field label="结束日期" className="flex-1 min-w-0">
+              <Input type="date" value={form.end_date || ''} onChange={e => set('end_date', e.target.value)} />
+            </Field>
           </div>
 
-          {/* 状态增加「酌情使用」 */}
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">状态</label>
-            <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+          {/* 状态：含「酌情使用」 */}
+          <Field label="状态">
+            <Select value={form.status} onValueChange={v => set('status', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="active">服用中</SelectItem>
@@ -526,11 +561,10 @@ function MedicationFormDialog({ open, onClose, onSubmit, initial, profileId, vis
                 <SelectItem value="stopped">已停药</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">备注</label>
-            <Textarea value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} />
-          </div>
+          </Field>
+          <Field label="备注">
+            <Textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} rows={2} />
+          </Field>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
@@ -631,14 +665,15 @@ const HealthPage = () => {
   if (!selectedProfile) {
     return (
       <div className="h-full flex flex-col bg-[#f5f5f5]">
-        <div className="flex items-center justify-between flex-wrap gap-2 px-4 sm:px-6 py-3 bg-white border-b border-gray-200">
+        {/* 顶部标题栏 */}
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-b border-gray-200">
           <div className="flex items-center gap-2 min-w-0">
             <Heart className="w-5 h-5 text-rose-500 flex-shrink-0" />
             <h1 className="text-base font-semibold">健康档案</h1>
-            <Badge variant="secondary" className="ml-1">{profiles.length}</Badge>
+            <Badge variant="secondary" className="text-xs ml-1">{profiles.length}</Badge>
           </div>
-          <Button size="sm" className="bg-[#bbea3b] hover:bg-[#a8d435] text-black flex-shrink-0" onClick={() => setProfileDialog({ open: true, initial: null })}>
-            <Plus className="w-4 h-4 mr-1" /> 新建档案
+          <Button size="sm" className="bg-[#bbea3b] hover:bg-[#a8d435] text-black flex-shrink-0 active:scale-95" onClick={() => setProfileDialog({ open: true, initial: null })}>
+            <Plus className="w-4 h-4 mr-1" /> 新建
           </Button>
         </div>
 
@@ -649,7 +684,7 @@ const HealthPage = () => {
             <div className="flex flex-col items-center justify-center h-60 text-gray-400">
               <Heart className="w-12 h-12 mb-3 opacity-30" />
               <p className="text-sm mb-3">还没有健康档案</p>
-              <Button size="sm" className="bg-[#bbea3b] hover:bg-[#a8d435] text-black" onClick={() => setProfileDialog({ open: true, initial: null })}>
+              <Button size="sm" className="bg-[#bbea3b] hover:bg-[#a8d435] text-black active:scale-95" onClick={() => setProfileDialog({ open: true, initial: null })}>
                 <Plus className="w-4 h-4 mr-1" /> 新建第一个档案
               </Button>
             </div>
@@ -657,46 +692,59 @@ const HealthPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {profiles.map(p => {
                 const nextDays = p.next_visit ? daysUntil(p.next_visit.next_visit_date) : null;
+                const ageText = calcAge(p.birth_date);
+                const gText = genderText(p.gender);
                 return (
-                  <div key={p.id}
+                  <div
+                    key={p.id}
                     onClick={() => loadDetail(p.id)}
-                    className="bg-white rounded-lg border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] relative overflow-hidden">
+                    className="bg-white rounded-lg border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all active:scale-[0.98] relative overflow-hidden"
+                  >
                     <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: p.color || '#ccc' }} />
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0" style={{ backgroundColor: p.color || '#ccc' }}>
-                          {p.patient_name.slice(0, 1)}
+                    {/* 头部：头像 + 姓名 + 年龄 */}
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0" style={{ backgroundColor: p.color || '#ccc' }}>
+                        {p.patient_name.slice(0, 1)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm truncate">{p.patient_name}</span>
+                          {p.status === 'archived' && <Badge variant="secondary" className="text-xs">已归档</Badge>}
                         </div>
-                        <div className="min-w-0">
-                          <div className="font-semibold text-sm truncate">{p.patient_name}</div>
-                          <div className="text-xs text-gray-400">{calcAge(p.birth_date)} {p.gender === 'male' ? '男' : p.gender === 'female' ? '女' : ''}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {ageText}{ageText && gText ? ' · ' : ''}{gText}
                         </div>
                       </div>
-                      {p.status === 'archived' && <Badge variant="secondary" className="text-xs">已归档</Badge>}
                     </div>
-                    <div className="text-sm font-medium text-gray-700 mb-2 truncate">{p.disease_name}</div>
-                    <div className="space-y-1 text-xs text-gray-500">
+                    {/* 疾病 */}
+                    <div className="text-sm font-medium text-gray-700 mb-3 truncate">{p.disease_name}</div>
+                    {/* 统计信息 */}
+                    <div className="space-y-1.5 text-xs text-gray-500">
                       {p.last_visit && (
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 flex-shrink-0" /> 最近就诊：{formatDate(p.last_visit.visit_date)} {p.last_visit.hospital}
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate">最近就诊：{formatDate(p.last_visit.visit_date)} {p.last_visit.hospital}</span>
                         </div>
                       )}
                       {p.active_medication_count > 0 && (
-                        <div className="flex items-center gap-1">
-                          <Pill className="w-3 h-3 flex-shrink-0" /> 服用药物：{p.active_medication_count} 种
+                        <div className="flex items-center gap-1.5">
+                          <Pill className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span>服用药物：{p.active_medication_count} 种</span>
                         </div>
                       )}
                       {p.visit_count > 0 && (
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 flex-shrink-0" /> 就诊次数：{p.visit_count}
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span>就诊次数：{p.visit_count}</span>
                         </div>
                       )}
                     </div>
+                    {/* 下次就诊提醒 */}
                     {nextDays !== null && (
-                      <div className={`mt-3 px-2 py-1 rounded-md text-xs flex items-center gap-1 ${nextDays <= 3 ? 'bg-rose-50 text-rose-600' : nextDays <= 7 ? 'bg-amber-50 text-amber-600' : 'bg-gray-50 text-gray-500'}`}>
-                        {nextDays <= 3 && <AlertCircle className="w-3 h-3 flex-shrink-0" />}
-                        下次就诊：{formatDateRange(p.next_visit.next_visit_date, p.next_visit.next_visit_date_end)}
-                        {nextDays > 0 ? `（${nextDays}天后）` : nextDays === 0 ? '（今天）' : '（已过期）'}
+                      <div className={`mt-3 px-2.5 py-1.5 rounded-md text-xs flex items-center gap-1.5 ${nextDays <= 3 ? 'bg-rose-50 text-rose-600' : nextDays <= 7 ? 'bg-amber-50 text-amber-600' : 'bg-gray-50 text-gray-500'}`}>
+                        {nextDays <= 3 && <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />}
+                        <span className="truncate">下次就诊：{formatDateRange(p.next_visit.next_visit_date, p.next_visit.next_visit_date_end)}</span>
+                        <span className="flex-shrink-0">{nextDays > 0 ? `(${nextDays}天后)` : nextDays === 0 ? '(今天)' : '(已过期)'}</span>
                       </div>
                     )}
                   </div>
@@ -728,44 +776,57 @@ const HealthPage = () => {
   // ── 档案详情视图 ─────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-[#f5f5f5]">
-        <div className="flex items-center justify-between flex-wrap gap-2 px-4 sm:px-6 py-3 bg-white border-b border-gray-200">
-          <div className="flex items-center gap-2 min-w-0">
-            <Button variant="ghost" size="sm" onClick={() => { setSelectedProfile(null); loadProfiles(); }} className="flex-shrink-0">
-              <ChevronLeft className="w-4 h-4" /> 返回
-            </Button>
-            <div className="h-4 w-px bg-gray-200 mx-1 flex-shrink-0" />
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: selectedProfile.color || '#ccc' }}>
-              {selectedProfile.patient_name.slice(0, 1)}
-            </div>
-            <div className="min-w-0">
-              <span className="font-semibold text-sm">{selectedProfile.patient_name}</span>
-              <span className="text-gray-400 text-xs ml-2 hidden sm:inline">{selectedProfile.disease_name}</span>
-            </div>
+      {/* 顶部标题栏 */}
+      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 py-3 bg-white border-b border-gray-200">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <Button variant="ghost" size="sm" onClick={() => { setSelectedProfile(null); loadProfiles(); }} className="flex-shrink-0 active:scale-95">
+            <ChevronLeft className="w-4 h-4" /> 返回
+          </Button>
+          <div className="h-4 w-px bg-gray-200 mx-0.5 flex-shrink-0" />
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: selectedProfile.color || '#ccc' }}>
+            {selectedProfile.patient_name.slice(0, 1)}
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <Button variant="outline" size="sm" onClick={() => setProfileDialog({ open: true, initial: selectedProfile })}>编辑档案</Button>
-            <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={() => setDeleteTarget({ type: 'profile', id: selectedProfile.id, name: selectedProfile.patient_name })}>
-              <Trash2 className="w-4 h-4" />
-            </Button>
+          <div className="min-w-0">
+            <span className="font-semibold text-sm block truncate">{selectedProfile.patient_name}</span>
+            <span className="text-xs text-gray-400 block truncate">{selectedProfile.disease_name}</span>
           </div>
         </div>
+        <div className="flex gap-1 flex-shrink-0">
+          <Button variant="outline" size="sm" onClick={() => setProfileDialog({ open: true, initial: selectedProfile })} className="active:scale-95">编辑</Button>
+          <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600 active:scale-95" onClick={() => setDeleteTarget({ type: 'profile', id: selectedProfile.id, name: selectedProfile.patient_name })}>
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
 
-        {detailLoading ? (
-          <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
+      {detailLoading ? (
+        <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4">
           {/* 基本信息 */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div><span className="text-gray-400 text-xs">年龄</span><div className="font-medium">{calcAge(selectedProfile.birth_date) || '-'}</div></div>
-              <div><span className="text-gray-400 text-xs">性别</span><div className="font-medium">{selectedProfile.gender === 'male' ? '男' : selectedProfile.gender === 'female' ? '女' : '-'}</div></div>
-              <div><span className="text-gray-400 text-xs">出生日期</span><div className="font-medium">{formatDate(selectedProfile.birth_date) || '-'}</div></div>
-              <div><span className="text-gray-400 text-xs">就诊次数</span><div className="font-medium">{selectedProfile.visits?.length || 0}</div></div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">年龄</div>
+                <div className="text-sm font-medium">{calcAge(selectedProfile.birth_date) || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">性别</div>
+                <div className="text-sm font-medium">{genderText(selectedProfile.gender) || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">出生日期</div>
+                <div className="text-sm font-medium">{formatDate(selectedProfile.birth_date) || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">就诊次数</div>
+                <div className="text-sm font-medium">{selectedProfile.visits?.length || 0}</div>
+              </div>
             </div>
             {selectedProfile.notes && (
               <div className="mt-3 pt-3 border-t border-gray-100">
-                <span className="text-gray-400 text-xs">备注</span>
-                <p className="text-sm mt-1">{selectedProfile.notes}</p>
+                <div className="text-xs text-gray-400 mb-1">备注</div>
+                <p className="text-sm">{selectedProfile.notes}</p>
               </div>
             )}
           </div>
@@ -778,42 +839,56 @@ const HealthPage = () => {
                 <h3 className="text-sm font-semibold">用药清单</h3>
                 <Badge variant="secondary" className="text-xs">{selectedProfile.medications?.length || 0}</Badge>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setMedDialog({ open: true, initial: null })}>
-                <Plus className="w-3 h-3 mr-1" /> 添加药物
+              <Button size="sm" variant="outline" onClick={() => setMedDialog({ open: true, initial: null })} className="active:scale-95">
+                <Plus className="w-3.5 h-3.5 mr-1" /> 添加药物
               </Button>
             </div>
             {selectedProfile.medications?.length === 0 ? (
-              <p className="text-xs text-gray-400 py-4 text-center">暂无药物记录</p>
+              <p className="text-xs text-gray-400 py-6 text-center">暂无药物记录</p>
             ) : (
               <div className="space-y-2">
                 {selectedProfile.medications?.map(med => (
-                  <div key={med.id} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 p-3 rounded-md border border-gray-100 hover:bg-gray-50">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 rounded-md bg-green-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                        {med.photo_url
-                          ? <img src={med.photo_url} alt={med.name} className="w-full h-full object-cover cursor-pointer hover:opacity-80" onClick={() => setPreviewImage(med.photo_url)} />
-                          : <Pill className="w-4 h-4 text-green-500" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium">{med.name}</span>
-                          <MedicationStatusBadge status={med.status} />
-                        </div>
-                        {med.dosage && <div className="text-xs text-gray-500 mt-0.5">{med.dosage}</div>}
-                        {med.usage_instruction && <div className="text-xs text-gray-400 mt-0.5">{med.usage_instruction}</div>}
-                        {(med.start_date || med.end_date) && (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {formatDateRange(med.start_date, med.end_date) || '未设日期'}
-                            {med.start_date && !med.end_date && ' ~ 至今'}
-                          </div>
-                        )}
-                      </div>
+                  <div key={med.id} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                    {/* 药物图片 */}
+                    <div
+                      className="w-12 h-12 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-green-50 cursor-pointer"
+                      onClick={() => med.photo_url && setPreviewImage(med.photo_url)}
+                    >
+                      {med.photo_url
+                        ? <img src={med.photo_url} alt={med.name} className="w-full h-full object-cover" />
+                        : <Pill className="w-5 h-5 text-green-500" />}
                     </div>
-                    <div className="flex gap-1 flex-shrink-0 self-end sm:self-start">
-                      <Button variant="ghost" size="sm" onClick={() => setMedDialog({ open: true, initial: med })} className="h-7 px-2 text-xs">编辑</Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ type: 'medication', id: med.id, name: med.name })} className="h-7 px-2 text-xs text-red-500">
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
+                    {/* 药物信息 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{med.name}</span>
+                        <MedicationStatusBadge status={med.status} />
+                      </div>
+                      {med.dosage && <div className="text-xs text-gray-500 mt-1">{med.dosage}</div>}
+                      {med.usage_instruction && <div className="text-xs text-gray-400 mt-0.5">{med.usage_instruction}</div>}
+                      {(med.start_date || med.end_date) && (
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {formatDateRange(med.start_date, med.end_date) || '未设日期'}
+                          {med.start_date && !med.end_date && ' ~ 至今'}
+                        </div>
+                      )}
+                    </div>
+                    {/* 操作按钮 */}
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => setMedDialog({ open: true, initial: med })}
+                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors active:scale-90"
+                        aria-label="编辑"
+                      >
+                        <Pill className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget({ type: 'medication', id: med.id, name: med.name })}
+                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90"
+                        aria-label="删除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -829,30 +904,33 @@ const HealthPage = () => {
                 <h3 className="text-sm font-semibold">就诊记录</h3>
                 <Badge variant="secondary" className="text-xs">{selectedProfile.visits?.length || 0}</Badge>
               </div>
-              <Button size="sm" variant="outline" onClick={() => setVisitDialog({ open: true, initial: null })}>
-                <Plus className="w-3 h-3 mr-1" /> 添加就诊
+              <Button size="sm" variant="outline" onClick={() => setVisitDialog({ open: true, initial: null })} className="active:scale-95">
+                <Plus className="w-3.5 h-3.5 mr-1" /> 添加就诊
               </Button>
             </div>
             {selectedProfile.visits?.length === 0 ? (
-              <p className="text-xs text-gray-400 py-4 text-center">暂无就诊记录</p>
+              <p className="text-xs text-gray-400 py-6 text-center">暂无就诊记录</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-1">
                 {selectedProfile.visits?.map((v) => (
-                  <div key={v.id} className="relative pl-6 pb-4 border-l-2 border-gray-100 last:border-l-0">
-                    <div className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-blue-400" />
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                  <div key={v.id} className="relative pl-6 py-3 border-l-2 border-gray-100 last:border-l-0">
+                    <div className="absolute left-[-5px] top-4 w-2 h-2 rounded-full bg-blue-400" />
+                    <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
+                        {/* 就诊日期 + 医院 */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{formatDate(v.visit_date)}</span>
                           {v.hospital && <span className="text-xs text-gray-500">{v.hospital}</span>}
                           {v.department && <Badge variant="outline" className="text-xs">{v.department}</Badge>}
                           {v.doctor && <span className="text-xs text-gray-400">{v.doctor}医生</span>}
                         </div>
-                        {v.chief_complaint && <div className="text-xs text-gray-600 mt-1">主诉：{v.chief_complaint}</div>}
+                        {/* 就诊详情 */}
+                        {v.chief_complaint && <div className="text-xs text-gray-600 mt-1.5">主诉：{v.chief_complaint}</div>}
                         {v.diagnosis && <div className="text-xs text-gray-600 mt-1">诊断：{v.diagnosis}</div>}
                         {v.prescription && <div className="text-xs text-gray-600 mt-1">处方：{v.prescription}</div>}
                         {v.examination && <div className="text-xs text-gray-500 mt-1">检查：{v.examination}</div>}
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
+                        {/* 费用 + 下次就诊 */}
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
                           {v.cost != null && <span>费用：¥{Number(v.cost).toFixed(2)}</span>}
                           {(v.next_visit_date || v.next_visit_date_end) && (
                             <span className="text-amber-600">下次就诊：{formatDateRange(v.next_visit_date, v.next_visit_date_end)}</span>
@@ -866,11 +944,11 @@ const HealthPage = () => {
                                 <img
                                   src={att.url}
                                   alt={`附件${idx + 1}`}
-                                  className="w-14 h-14 rounded-md object-cover border border-gray-200 cursor-pointer hover:opacity-80"
+                                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-md object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
                                   onClick={() => setPreviewImage(att.url)}
                                 />
                                 {att.note && (
-                                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 rounded-b-md truncate">
+                                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded-b-md truncate max-w-full">
                                     {att.note}
                                   </div>
                                 )}
@@ -879,11 +957,22 @@ const HealthPage = () => {
                           </div>
                         )}
                       </div>
+                      {/* 操作按钮 */}
                       <div className="flex gap-1 flex-shrink-0">
-                        <Button variant="ghost" size="sm" onClick={() => setVisitDialog({ open: true, initial: v })} className="h-7 px-2 text-xs">编辑</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ type: 'visit', id: v.id, name: '就诊记录' })} className="h-7 px-2 text-xs text-red-500">
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                        <button
+                          onClick={() => setVisitDialog({ open: true, initial: v })}
+                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors active:scale-90"
+                          aria-label="编辑"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget({ type: 'visit', id: v.id, name: '就诊记录' })}
+                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90"
+                          aria-label="删除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   </div>
