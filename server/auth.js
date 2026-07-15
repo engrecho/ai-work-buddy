@@ -50,9 +50,37 @@ function getCookieOptions() {
   };
 }
 
+// ── 用户存在性缓存（避免每次请求都查库）──────────────────────
+// 60 秒内同一 user_id 只查一次，命中则放行，未命中才查库
+const _userExistsCache = new Map(); // user_id → { exists, ts }
+const USER_EXISTS_CACHE_TTL = 60_000;
+
+async function _checkUserExists(userId) {
+  const now = Date.now();
+  const cached = _userExistsCache.get(userId);
+  if (cached && now - cached.ts < USER_EXISTS_CACHE_TTL) {
+    return cached.exists;
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, username, nickname, is_active FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    const exists = rows.length > 0 && rows[0].is_active !== 0;
+    _userExistsCache.set(userId, { exists, ts: now });
+    return exists;
+  } catch (err) {
+    // 数据库异常时放行（避免 DB 抖动导致全站 401）
+    console.error('[auth] _checkUserExists error:', err.message);
+    return true;
+  }
+}
+
 // ── 认证中间件 ───────────────────────────────────────────────
 // 从 Cookie 或 Authorization Header 提取 JWT，验证后挂载到 req.user
-export function authMiddleware(req, res, next) {
+// 安全设计：JWT 验证后还会查库确认用户仍然存在且 is_active=1，
+// 防止 users 表被清空或用户被禁用后 JWT 仍可操作（2026-07-15 事故修复）
+export async function authMiddleware(req, res, next) {
   const t0 = Date.now();
   let token = null;
 
@@ -89,7 +117,17 @@ export function authMiddleware(req, res, next) {
     });
   }
 
-  // 验证用户是否仍然存在（可选，但更安全）
+  // 验证用户是否仍然存在（60 秒缓存，避免每次请求都查库）
+  const exists = await _checkUserExists(decoded.id);
+  if (!exists) {
+    // 用户已被删除或禁用，清除缓存并拒绝
+    _userExistsCache.delete(decoded.id);
+    return res.status(401).json({
+      data: null,
+      error: { message: '用户不存在或已被禁用，请重新登录' },
+    });
+  }
+
   req.user = {
     id: decoded.id,
     username: decoded.username,

@@ -55,6 +55,14 @@ app.use('/api/avatars', express.static(AVATARS_DIR, {
   setHeaders: (res) => { res.setHeader('Cache-Control', 'public, max-age=604800'); },
 }));
 
+// ── 健康图片静态服务（药物照片、就诊附件等） ──────────────────────
+const HEALTH_IMG_DIR = path.join(__dirname, '..', 'uploads', 'health');
+fs.mkdirSync(HEALTH_IMG_DIR, { recursive: true });
+app.use('/api/health/images', express.static(HEALTH_IMG_DIR, {
+  maxAge: '7d',
+  setHeaders: (res) => { res.setHeader('Cache-Control', 'public, max-age=604800'); },
+}));
+
 // ── 头像上传 multer 配置 ──────────────────────────────────────────
 const avatarUpload = multer({
   storage: multer.diskStorage({
@@ -67,6 +75,24 @@ const avatarUpload = multer({
     },
   }),
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (req, file, cb) => {
+    const ok = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype);
+    cb(ok ? null : new Error('仅支持 jpg/png/webp/gif 图片'), ok);
+  },
+});
+
+// ── 健康图片上传 multer 配置（药物照片、就诊附件等，5MB） ──────────
+const healthImgUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, HEALTH_IMG_DIR),
+    filename: (req, file, cb) => {
+      const ext = (file.originalname.split('.').pop() || 'jpg').toLowerCase();
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg';
+      const rand = crypto.randomBytes(8).toString('hex');
+      cb(null, `health_${req.user.id}_${Date.now()}_${rand}.${safeExt}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     const ok = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype);
     cb(ok ? null : new Error('仅支持 jpg/png/webp/gif 图片'), ok);
@@ -951,6 +977,22 @@ app.post('/api/auth/avatar', authMiddleware, (req, res, next) => {
   }
 });
 
+// 上传健康图片（药物照片、就诊附件等）—— 文件存 uploads/health/
+app.post('/api/health/upload', authMiddleware, (req, res, next) => {
+  healthImgUpload.single('file')(req, res, (err) => {
+    if (err) return res.json({ data: null, error: { message: err.message || '上传失败' } });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) return res.json({ data: null, error: { message: '未收到文件' } });
+    const url = `/api/health/images/${req.file.filename}`;
+    return res.json({ data: { url, filename: req.file.filename }, error: null });
+  } catch (err) {
+    return res.json({ data: null, error: { message: err.message } });
+  }
+});
+
 // 修改密码（需要登录）
 app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
   try {
@@ -1519,13 +1561,15 @@ app.get('/api/health/profiles/with-stats', authMiddleware, async (req, res) => {
       [req.user.id]
     );
     for (const p of profiles) {
+      const tp = transformRow('health_profiles', p);
+      Object.assign(p, tp);
       // 最近一次就诊
       const [lastVisit] = await pool.query(
         `SELECT id, visit_date, hospital, diagnosis FROM health_visits
          WHERE profile_id = ? ORDER BY visit_date DESC LIMIT 1`,
         [p.id]
       );
-      p.last_visit = lastVisit[0] || null;
+      p.last_visit = lastVisit[0] ? transformRow('health_visits', lastVisit[0]) : null;
       // 下次就诊
       const [nextVisit] = await pool.query(
         `SELECT id, next_visit_date, hospital FROM health_visits
@@ -1533,7 +1577,7 @@ app.get('/api/health/profiles/with-stats', authMiddleware, async (req, res) => {
          ORDER BY next_visit_date ASC LIMIT 1`,
         [p.id]
       );
-      p.next_visit = nextVisit[0] || null;
+      p.next_visit = nextVisit[0] ? transformRow('health_visits', nextVisit[0]) : null;
       // 当前用药数量
       const [[medCount]] = await pool.query(
         `SELECT COUNT(*) as count FROM health_medications
@@ -1569,7 +1613,7 @@ app.get('/api/health/profiles/:id/detail', authMiddleware, async (req, res) => {
     if (profiles.length === 0) {
       return res.json({ data: null, error: { message: '档案不存在' } });
     }
-    const profile = profiles[0];
+    const profile = transformRow('health_profiles', profiles[0]);
     const [visits] = await pool.query(
       `SELECT * FROM health_visits WHERE profile_id = ? ORDER BY visit_date DESC`,
       [id]
@@ -1579,7 +1623,11 @@ app.get('/api/health/profiles/:id/detail', authMiddleware, async (req, res) => {
       [id]
     );
     return res.json({
-      data: { ...profile, visits, medications },
+      data: {
+        ...profile,
+        visits: visits.map(v => transformRow('health_visits', v)),
+        medications: medications.map(m => transformRow('health_medications', m)),
+      },
       error: null,
     });
   } catch (err) {
@@ -1842,8 +1890,8 @@ app.patch('/api/:table', requireAuthForBusinessTable, async (req, res) => {
     }
 
     for (const [key, value] of Object.entries(overridePatch)) {
-      // 禁止客户端修改 user_id 和 password_hash
-      if (key === 'user_id' || key === 'password_hash') continue;
+      // 禁止客户端修改主键、user_id 和 password_hash（防止主键冲突）
+      if (key === 'id' || key === 'user_id' || key === 'password_hash') continue;
       if (validCols.includes(key)) {
         setColumns.push(`${escapeId(key)} = ?`);
         setParams.push(prepareValue(table, key, value));

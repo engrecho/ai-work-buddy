@@ -80,7 +80,7 @@ export const TABLE_COLUMNS = {
   health_visits: [
     'id', 'user_id', 'profile_id', 'visit_date', 'hospital', 'department', 'doctor',
     'chief_complaint', 'diagnosis', 'prescription', 'examination', 'next_visit_date',
-    'cost', 'attachment_urls', 'created_at', 'updated_at'
+    'next_visit_date_end', 'cost', 'attachment_urls', 'created_at', 'updated_at'
   ],
   health_medications: [
     'id', 'user_id', 'profile_id', 'visit_id', 'name', 'photo_url',
@@ -129,7 +129,7 @@ export const DATETIME_COLUMNS = {
   rss_sources: ['last_fetched_at', 'created_at', 'updated_at'],
   rss_articles: ['published_at', 'created_at', 'updated_at'],
   health_profiles: ['birth_date', 'deleted_at', 'created_at', 'updated_at'],
-  health_visits: ['visit_date', 'next_visit_date', 'created_at', 'updated_at'],
+  health_visits: ['visit_date', 'next_visit_date', 'next_visit_date_end', 'created_at', 'updated_at'],
   health_medications: ['start_date', 'end_date', 'created_at', 'updated_at'],
   vault_items: ['deleted_at', 'created_at', 'updated_at'],
 };

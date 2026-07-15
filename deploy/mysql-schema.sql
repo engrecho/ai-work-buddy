@@ -367,6 +367,7 @@ CREATE TABLE IF NOT EXISTS `health_visits` (
   `prescription` longtext DEFAULT NULL,
   `examination` longtext DEFAULT NULL,
   `next_visit_date` date DEFAULT NULL,
+  `next_visit_date_end` date DEFAULT NULL,
   `cost` decimal(10,2) DEFAULT NULL,
   `attachment_urls` json DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
