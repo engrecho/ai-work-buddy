@@ -359,10 +359,12 @@ export async function hashApiKey(plainKey) {
   return crypto.createHash('sha256').update(plainKey).digest('hex');
 }
 
-// ── API Key 可逆加密（支持"再次查看明文"，用户已确认此取舍） ──────
+// ── API Key 可逆加密（支持"再次查看明文"，用户已确认此取舍） ──────────
 // 独立密钥，不复用 JWT_SECRET（语义不同 + 轮换 JWT 会导致 key 无法解密）
 // 沿用 memos 的 AES-256-CBC + sha256(env) 派生密钥模式
-const APIKEY_ENCRYPTION_KEY = process.env.APIKEY_ENCRYPTION_KEY || 'ai-buddy-apikey-secret-2026';
+// 注意：此兜底默认值必须与 ecosystem.config.cjs 中的 env.APIKEY_ENCRYPTION_KEY 保持一致，
+// 否则 PM2 启动 vs 直接 node server/index.js 启动会产生不同密钥，导致旧 Key 反查失败。
+const APIKEY_ENCRYPTION_KEY = process.env.APIKEY_ENCRYPTION_KEY || 'ai-buddy-apikey-prod-please-change';
 
 function encryptApiKey(plainKey) {
   const iv = crypto.randomBytes(16);
