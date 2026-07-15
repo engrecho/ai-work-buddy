@@ -2,10 +2,17 @@
 -- AI-Buddy - 完整数据库 Schema
 --
 -- 用途: 全新初始化数据库（包含所有表、索引、约束）
--- 注意: 全部使用 CREATE TABLE IF NOT EXISTS，幂等且不丢数据。
---       增量变更请使用 ALTER 语句或独立 once 任务。
 --
--- 使用方法:
+-- ⚠️  安全红线（详见 deploy/SAFETY_RULES.md）⚠️
+--   1. 本文件严禁出现 DROP TABLE / DROP DATABASE / TRUNCATE
+--   2. 所有建表语句必须用 CREATE TABLE IF NOT EXISTS（幂等）
+--   3. 本文件禁止被 deploy/once/*.sh 引用执行（once 失败重试会丢数据）
+--   4. 本文件禁止写 UPDATE / DELETE 等业务 DML
+--   违反以上任意一条都会导致生产数据丢失，2026-07-15 已发生过真实事故。
+--
+-- 增量变更请使用 ALTER 语句或独立 once 任务（参考 deploy/once/10-create-tables-v3.sh）
+--
+-- 使用方法（仅限全新初始化）:
 --   mysql -u <user> -p <database> < mysql-schema.sql
 -- ============================================================
 

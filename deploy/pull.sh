@@ -2,6 +2,10 @@
 # ============================================================
 # AI-Buddy - Webhook 自动部署脚本（两阶段架构）
 #
+# ⚠️  在新增/修改 deploy/once/*.sh 前，必须先阅读 deploy/SAFETY_RULES.md
+#     2026-07-15 曾因 once 任务执行完整 mysql-schema.sql 导致全库被 DROP 清空
+#     红线：once 任务严禁执行 DROP / TRUNCATE / 完整 schema / 重置密码
+#
 # 工作流程:
 #   GitHub push → 宝塔 WebHook → 本脚本
 #
@@ -17,6 +21,7 @@
 # 一次性任务（核心机制）:
 #   把脚本放到 deploy/once/ 下，push 到 GitHub 即可
 #   本脚本会自动执行，成功后记入 .done 永久跳过
+#   ⚠️  失败的任务会被下次部署重试，所以 once 脚本必须幂等且不能破坏数据
 #   脚本里可用环境变量: PROJECT_DIR / DB_USER / DB_PASSWORD / DB_NAME / NVM_DIR
 #
 # 使用方式:
