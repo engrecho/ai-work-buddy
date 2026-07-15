@@ -2,7 +2,8 @@
 -- AI-Buddy - 完整数据库 Schema
 --
 -- 用途: 全新初始化数据库（包含所有表、索引、约束）
--- 注意: 仅用于首次安装；增量变更请使用 ALTER 语句手动执行
+-- 注意: 全部使用 CREATE TABLE IF NOT EXISTS，幂等且不丢数据。
+--       增量变更请使用 ALTER 语句或独立 once 任务。
 --
 -- 使用方法:
 --   mysql -u <user> -p <database> < mysql-schema.sql
@@ -17,8 +18,7 @@
 -- Table structure for table `users`
 --
 
-DROP TABLE IF EXISTS `users`;
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `username` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
   `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -35,8 +35,8 @@ CREATE TABLE `users` (
 -- Table structure for table `api_keys`
 --
 
-DROP TABLE IF EXISTS `api_keys`;
-CREATE TABLE `api_keys` (
+
+CREATE TABLE IF NOT EXISTS `api_keys` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `key_hash` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -59,8 +59,8 @@ CREATE TABLE `api_keys` (
 -- Table structure for table `memos`
 --
 
-DROP TABLE IF EXISTS `memos`;
-CREATE TABLE `memos` (
+
+CREATE TABLE IF NOT EXISTS `memos` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL DEFAULT '0',
   `title` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -86,8 +86,8 @@ CREATE TABLE `memos` (
 -- Table structure for table `quick_notes`
 --
 
-DROP TABLE IF EXISTS `quick_notes`;
-CREATE TABLE `quick_notes` (
+
+CREATE TABLE IF NOT EXISTS `quick_notes` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `content` text COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -101,8 +101,8 @@ CREATE TABLE `quick_notes` (
 -- Table structure for table `reading_items`
 --
 
-DROP TABLE IF EXISTS `reading_items`;
-CREATE TABLE `reading_items` (
+
+CREATE TABLE IF NOT EXISTS `reading_items` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `url` text COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -130,8 +130,8 @@ CREATE TABLE `reading_items` (
 -- Table structure for table `rss_sources`
 --
 
-DROP TABLE IF EXISTS `rss_sources`;
-CREATE TABLE `rss_sources` (
+
+CREATE TABLE IF NOT EXISTS `rss_sources` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -154,8 +154,8 @@ CREATE TABLE `rss_sources` (
 -- Table structure for table `rss_articles`
 --
 
-DROP TABLE IF EXISTS `rss_articles`;
-CREATE TABLE `rss_articles` (
+
+CREATE TABLE IF NOT EXISTS `rss_articles` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `source_id` bigint(20) NOT NULL,
@@ -186,8 +186,8 @@ CREATE TABLE `rss_articles` (
 -- Table structure for table `task_comments`
 --
 
-DROP TABLE IF EXISTS `task_comments`;
-CREATE TABLE `task_comments` (
+
+CREATE TABLE IF NOT EXISTS `task_comments` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL DEFAULT '0',
   `task_id` bigint(20) NOT NULL,
@@ -204,8 +204,8 @@ CREATE TABLE `task_comments` (
 -- Table structure for table `task_groups`
 --
 
-DROP TABLE IF EXISTS `task_groups`;
-CREATE TABLE `task_groups` (
+
+CREATE TABLE IF NOT EXISTS `task_groups` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `color` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -222,8 +222,8 @@ CREATE TABLE `task_groups` (
 -- Table structure for table `task_members`
 --
 
-DROP TABLE IF EXISTS `task_members`;
-CREATE TABLE `task_members` (
+
+CREATE TABLE IF NOT EXISTS `task_members` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -237,8 +237,8 @@ CREATE TABLE `task_members` (
 -- Table structure for table `task_notes`
 --
 
-DROP TABLE IF EXISTS `task_notes`;
-CREATE TABLE `task_notes` (
+
+CREATE TABLE IF NOT EXISTS `task_notes` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL DEFAULT '0',
   `title` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -255,8 +255,8 @@ CREATE TABLE `task_notes` (
 -- Table structure for table `task_tags`
 --
 
-DROP TABLE IF EXISTS `task_tags`;
-CREATE TABLE `task_tags` (
+
+CREATE TABLE IF NOT EXISTS `task_tags` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL DEFAULT '0',
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -270,8 +270,8 @@ CREATE TABLE `task_tags` (
 -- Table structure for table `tasks`
 --
 
-DROP TABLE IF EXISTS `tasks`;
-CREATE TABLE `tasks` (
+
+CREATE TABLE IF NOT EXISTS `tasks` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `title` text COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -311,8 +311,8 @@ CREATE TABLE `tasks` (
 -- Table structure for table `user_settings`
 --
 
-DROP TABLE IF EXISTS `user_settings`;
-CREATE TABLE `user_settings` (
+
+CREATE TABLE IF NOT EXISTS `user_settings` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
   `settings` json NOT NULL,
