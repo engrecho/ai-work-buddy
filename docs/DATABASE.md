@@ -1,6 +1,6 @@
 # AI-Buddy 数据库结构说明
 
-> 最后更新：2026-07-04
+> 最后更新：2026-07-16
 > 数据库：MySQL 5.7+ / 8.0
 > 部署位置：腾讯云宝塔（生产）/ 本地（开发）
 > 协议：自建 Express HTTP API
@@ -39,6 +39,9 @@
 | `task_notes` | 梳理文档 | 手写 bigint | 否 |
 | `reading_items` | 阅读收藏 | 手写 bigint | **是**（`deleted_at`） |
 | `quick_notes` | 随记 | AUTO_INCREMENT | 否 |
+| `health_profiles` | 健康档案（就诊人） | AUTO_INCREMENT | 否 |
+| `health_visits` | 就诊记录 | AUTO_INCREMENT | 否 |
+| `health_medications` | 用药记录 | AUTO_INCREMENT | 否 |
 
 **主键约定**：
 - 早期版本统一用「手写 bigint（`Date.now()` 时间戳）」；迁移到 MySQL 后，POST 接口要求 DB 给出 `insertId`，因此部分表改为 `AUTO_INCREMENT`（详见 `deploy/migrate-add-auto-increment.sql`）
@@ -269,6 +272,91 @@ CREATE TABLE `quick_notes` (
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+---
+
+## 12. health_profiles（健康档案 — 就诊人）
+
+```sql
+CREATE TABLE `health_profiles` (
+    `id`          BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id`     BIGINT NOT NULL,
+    `patient_name` VARCHAR(100) NOT NULL,         -- 患者姓名（如：张三 / 父亲）
+    `gender`      ENUM('male','female') NULL,      -- 性别
+    `birth_date`  DATE NULL,                       -- 出生日期（可空）
+    `blood_type`  VARCHAR(10) NULL,                -- 血型
+    `allergies`   TEXT NULL,                       -- 过敏史
+    `medical_history` TEXT NULL,                    -- 既往病史
+    `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+- 一个用户可有多个档案（自己、父母、子女）
+- `birth_date` 后端返回 ISO 字符串（如 `2021-11-14T16:00:00.000Z`），前端用本地时区转换显示
+
+---
+
+## 13. health_visits（就诊记录）
+
+```sql
+CREATE TABLE `health_visits` (
+    `id`                 BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id`            BIGINT NOT NULL,
+    `profile_id`        BIGINT NOT NULL,            -- 关联 health_profiles.id
+    `visit_date`        DATE NOT NULL,              -- 就诊日期
+    `hospital`          VARCHAR(255) NULL,          -- 医院
+    `department`        VARCHAR(100) NULL,          -- 科室
+    `doctor`            VARCHAR(100) NULL,          -- 医生
+    `chief_complaint`   TEXT NULL,                  -- 主诉
+    `diagnosis`         TEXT NULL,                  -- 诊断结果
+    `prescription`      TEXT NULL,                  -- 处方/用药方案
+    `examination`       TEXT NULL,                  -- 检查报告
+    `next_visit_date`       DATE NULL,              -- 下次就诊日期（开始，可空）
+    `next_visit_date_end`   DATE NULL,              -- 下次就诊日期（结束，可空，支持区间）
+    `cost`              DECIMAL(10,2) NULL,         -- 费用
+    `is_reimbursed`     TINYINT(1) NOT NULL DEFAULT 0,  -- 是否报销（0=否, 1=是）
+    `reimburse_amount`  DECIMAL(10,2) NULL,         -- 报销金额
+    `attachment_urls`   JSON NULL,                  -- 附件图片（数组，每项 {url, note?}）
+    `created_at`        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+- `next_visit_date` / `next_visit_date_end` 支持日期区间（前端用级联选择器）
+- `is_reimbursed` 是布尔字段（`BOOLEAN_COLUMNS` 已配置）
+- `attachment_urls` 是 JSON 数组：`[{url: "...", note: "心电图"}, ...]`，note 非必填
+- 列表按 `visit_date DESC` 排序，`visits[0]` 即最新就诊
+
+---
+
+## 14. health_medications（用药记录）
+
+```sql
+CREATE TABLE `health_medications` (
+    `id`               BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id`          BIGINT NOT NULL,
+    `profile_id`      BIGINT NOT NULL,              -- 关联 health_profiles.id
+    `visit_id`        BIGINT NULL,                  -- 关联 health_visits.id（可空，表示独立用药）
+    `name`            VARCHAR(200) NOT NULL,         -- 药品名称
+    `dosage`          VARCHAR(100) NULL,             -- 剂量
+    `usage_instruction` TEXT NULL,                  -- 用法说明
+    `status`          ENUM('active','paused','completed','as_needed') NOT NULL DEFAULT 'active',
+    `start_date`      DATE NULL,                     -- 开始日期（可空）
+    `end_date`        DATE NULL,                     -- 结束日期（可空）
+    `photo_url`       TEXT NULL,                     -- 药物照片
+    `notes`           TEXT NULL,                     -- 备注
+    `created_at`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+- `status` 状态：`active`(服用中) / `paused`(暂停) / `completed`(已完成) / `as_needed`(酌情使用)
+- `visit_id` 可空：关联到具体就诊记录的用药走"就诊记录右栏独立编辑"；未关联的归到档案顶层"用药清单"
+- `start_date` / `end_date` 均可空（支持无固定周期的药物）
+- 后端 `GET /api/health_profiles/:id` 详情接口会自动把药物按 `visit_id` 分组：
+  - `visits[].medications` = 本次就诊的药物
+  - `profile.medications` = 未关联就诊的顶层药物
 
 ---
 
