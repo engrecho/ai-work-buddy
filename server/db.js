@@ -80,7 +80,8 @@ export const TABLE_COLUMNS = {
   health_visits: [
     'id', 'user_id', 'profile_id', 'visit_date', 'hospital', 'department', 'doctor',
     'chief_complaint', 'diagnosis', 'prescription', 'examination', 'next_visit_date',
-    'next_visit_date_end', 'cost', 'attachment_urls', 'created_at', 'updated_at'
+    'next_visit_date_end', 'cost', 'is_reimbursed', 'reimburse_amount',
+    'attachment_urls', 'created_at', 'updated_at'
   ],
   health_medications: [
     'id', 'user_id', 'profile_id', 'visit_id', 'name', 'photo_url',
@@ -140,4 +141,5 @@ export const BOOLEAN_COLUMNS = {
   reading_items: ['is_read', 'is_starred', 'is_offline'],
   rss_articles: ['is_read', 'is_starred'],
   vault_items: ['is_active'],
+  health_visits: ['is_reimbursed'],
 };

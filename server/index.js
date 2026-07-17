@@ -1622,11 +1622,29 @@ app.get('/api/health/profiles/:id/detail', authMiddleware, async (req, res) => {
       `SELECT * FROM health_medications WHERE profile_id = ? ORDER BY status DESC, created_at DESC`,
       [id]
     );
+    // 把药物按 visit_id 分组：visits[].medications，未关联就诊的归到顶层 medications
+    const visitIds = new Set(visits.map(v => v.id));
+    const visitsMedMap = {};
+    const topMeds = [];
+    for (const m of medications) {
+      const tm = transformRow('health_medications', m);
+      if (tm.visit_id && visitIds.has(tm.visit_id)) {
+        if (!visitsMedMap[tm.visit_id]) visitsMedMap[tm.visit_id] = [];
+        visitsMedMap[tm.visit_id].push(tm);
+      } else {
+        topMeds.push(tm);
+      }
+    }
+    const visitsOut = visits.map(v => {
+      const tv = transformRow('health_visits', v);
+      tv.medications = visitsMedMap[v.id] || [];
+      return tv;
+    });
     return res.json({
       data: {
         ...profile,
-        visits: visits.map(v => transformRow('health_visits', v)),
-        medications: medications.map(m => transformRow('health_medications', m)),
+        visits: visitsOut,
+        medications: topMeds,
       },
       error: null,
     });

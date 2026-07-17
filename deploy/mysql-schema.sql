@@ -369,6 +369,8 @@ CREATE TABLE IF NOT EXISTS `health_visits` (
   `next_visit_date` date DEFAULT NULL,
   `next_visit_date_end` date DEFAULT NULL,
   `cost` decimal(10,2) DEFAULT NULL,
+  `is_reimbursed` tinyint(1) NOT NULL DEFAULT 0,
+  `reimburse_amount` decimal(10,2) DEFAULT NULL,
   `attachment_urls` json DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

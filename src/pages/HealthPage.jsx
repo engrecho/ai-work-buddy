@@ -413,40 +413,126 @@ function ProfileFormDialog({ open, onClose, onSubmit, initial }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 就诊记录表单 — 移动端单列
+// 日期区间选择器 — 美化版，按钮在右侧
+// 单个级联组件：开始日期 + 结束日期，共用一个面板
 // ════════════════════════════════════════════════════════════════════
-function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
+function DateRangeField({ label, startVal, endVal, onStartChange, onEndChange, required }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <Field label={label} required={required}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[140px]">
+          <Input
+            type="date"
+            value={startVal || ''}
+            max={endVal || undefined}
+            onChange={e => onStartChange(e.target.value)}
+            className="pr-9"
+          />
+          <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
+        <span className="text-gray-400 text-sm flex-shrink-0">~</span>
+        <div className="relative flex-1 min-w-[140px]">
+          <Input
+            type="date"
+            value={endVal || ''}
+            min={startVal || undefined}
+            max={today}
+            onChange={e => onEndChange(e.target.value)}
+            className="pr-9"
+          />
+          <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
+      </div>
+      {(startVal || endVal) && (
+        <div className="text-xs text-gray-400 mt-1.5">
+          {formatDateRange(startVal, endVal) || '未设置'}
+        </div>
+      )}
+    </Field>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 就诊记录表单 — 响应式：移动端单列 / PC端三栏布局
+//   左：基本信息（日期/医院/科室/医生/费用/报销）
+//   中：诊断记录（主诉/诊断/处方/检查/下次就诊/附件）
+//   右：本次就诊用药清单（独立编辑）
+// ════════════════════════════════════════════════════════════════════
+function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisit, visitMedications, onAddMedication, onEditMedication, onDeleteMedication, onPreviewImage }) {
+  const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
-    visit_date: new Date().toISOString().slice(0, 10), hospital: '', department: '', doctor: '',
+    visit_date: today, hospital: '', department: '', doctor: '',
     chief_complaint: '', diagnosis: '', prescription: '', examination: '',
-    next_visit_date: '', next_visit_date_end: '', cost: '', attachment_urls: [],
+    next_visit_date: '', next_visit_date_end: '', cost: '',
+    is_reimbursed: 0, reimburse_amount: '', attachment_urls: [],
   });
+  const [showCopyPrompt, setShowCopyPrompt] = useState(false);
 
   useEffect(() => {
     if (open) {
       const base = {
-        visit_date: new Date().toISOString().slice(0, 10), hospital: '', department: '', doctor: '',
+        visit_date: today, hospital: '', department: '', doctor: '',
         chief_complaint: '', diagnosis: '', prescription: '', examination: '',
-        next_visit_date: '', next_visit_date_end: '', cost: '', attachment_urls: [],
+        next_visit_date: '', next_visit_date_end: '', cost: '',
+        is_reimbursed: 0, reimburse_amount: '', attachment_urls: [],
       };
       if (initial) {
         const normalized = normalizeFormDates(initial, ['visit_date', 'next_visit_date', 'next_visit_date_end']);
         setForm({
           ...base,
           ...normalized,
+          // tinyint → boolean: 后端返回 0/1
+          is_reimbursed: initial.is_reimbursed ? 1 : 0,
+          reimburse_amount: initial.reimburse_amount != null ? String(initial.reimburse_amount) : '',
           attachment_urls: Array.isArray(initial.attachment_urls) ? initial.attachment_urls : [],
         });
+        setShowCopyPrompt(false);
       } else {
+        // 新建：如果有上次就诊记录，提示是否复制
+        if (lastVisit) {
+          setShowCopyPrompt(true);
+        } else {
+          setShowCopyPrompt(false);
+        }
         setForm(base);
       }
     }
-  }, [open, initial]);
+  }, [open, initial, lastVisit, today]);
+
+  const copyFromLast = (copyMeds) => {
+    if (!lastVisit) return;
+    const normalized = normalizeFormDates(lastVisit, ['next_visit_date', 'next_visit_date_end']);
+    setForm(f => ({
+      ...f,
+      // 日期默认今日（不复制就诊日期）
+      visit_date: today,
+      hospital: normalized.hospital || '',
+      department: normalized.department || '',
+      doctor: normalized.doctor || '',
+      chief_complaint: '',
+      diagnosis: '',
+      prescription: normalized.prescription || '',
+      examination: '',
+      // 下次就诊日期清空（属于上次的计划，不复制）
+      next_visit_date: '',
+      next_visit_date_end: '',
+      cost: '',
+      is_reimbursed: 0,
+      reimburse_amount: '',
+      attachment_urls: [],
+    }));
+    setShowCopyPrompt(false);
+    toast.success(copyMeds ? '已复制上次信息（不含用药，请到右侧添加）' : '已复制上次基本信息');
+  };
 
   const handleSubmit = () => {
     if (!form.visit_date) { toast.error('请填写就诊日期'); return; }
     const cleaned = cleanForm(form);
     cleaned.profile_id = profileId;
     cleaned.cost = form.cost ? parseFloat(form.cost) : null;
+    cleaned.is_reimbursed = form.is_reimbursed ? 1 : 0;
+    cleaned.reimburse_amount = form.reimburse_amount ? parseFloat(form.reimburse_amount) : null;
     cleaned.attachment_urls = form.attachment_urls || [];
     onSubmit(cleaned);
   };
@@ -455,59 +541,189 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-lg mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+      <DialogContent className="w-full sm:max-w-5xl mx-auto rounded-none sm:rounded-xl max-h-[100dvh] sm:max-h-[92dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base">{initial ? '编辑就诊记录' : '新增就诊记录'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <Field label="就诊日期" required>
-            <Input type="date" value={form.visit_date || ''} onChange={e => set('visit_date', e.target.value)} />
-          </Field>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Field label="医院" className="flex-1 min-w-0">
+
+        {/* 复制上次就诊提示 */}
+        {showCopyPrompt && lastVisit && (
+          <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-blue-700 mb-1">
+                检测到上次就诊记录（{formatDate(lastVisit.visit_date)} {lastVisit.hospital}），是否复制基本信息？
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => copyFromLast(true)}
+                  className="text-xs px-3 py-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 active:scale-95 transition-all"
+                >
+                  复制基本信息
+                </button>
+                <button
+                  onClick={() => setShowCopyPrompt(false)}
+                  className="text-xs px-3 py-1.5 rounded-md bg-white text-blue-600 border border-blue-300 hover:bg-blue-50 active:scale-95 transition-all"
+                >
+                  不复制
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 移动端：单列布局 / PC：三栏布局 */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 py-1">
+          {/* 左栏：基本信息 */}
+          <div className="space-y-4 lg:border-r lg:border-gray-100 lg:pr-5">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 lg:hidden">
+              <Calendar className="w-4 h-4 text-blue-500" /> 基本信息
+            </div>
+            <Field label="就诊日期" required>
+              <div className="relative">
+                <Input type="date" value={form.visit_date || ''} onChange={e => set('visit_date', e.target.value)} className="pr-9" />
+                <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            </Field>
+            <Field label="医院">
               <Input value={form.hospital || ''} onChange={e => set('hospital', e.target.value)} placeholder="如：市第一人民医院" />
             </Field>
-            <Field label="科室" className="w-full sm:w-32 flex-shrink-0">
-              <Input value={form.department || ''} onChange={e => set('department', e.target.value)} placeholder="如：心内科" />
+            <div className="flex gap-3">
+              <Field label="科室" className="flex-1 min-w-0">
+                <Input value={form.department || ''} onChange={e => set('department', e.target.value)} placeholder="心内科" />
+              </Field>
+              <Field label="医生" className="w-28 flex-shrink-0">
+                <Input value={form.doctor || ''} onChange={e => set('doctor', e.target.value)} />
+              </Field>
+            </div>
+
+            {/* 报销 */}
+            <Field label="是否报销">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => set('is_reimbursed', form.is_reimbursed ? 0 : 1)}
+                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${form.is_reimbursed ? 'bg-green-500' : 'bg-gray-300'}`}
+                  aria-pressed={!!form.is_reimbursed}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${form.is_reimbursed ? 'translate-x-5' : ''}`} />
+                </button>
+                <span className="text-sm text-gray-600">{form.is_reimbursed ? '已报销' : '未报销'}</span>
+              </div>
             </Field>
-            <Field label="医生" className="w-full sm:w-32 flex-shrink-0">
-              <Input value={form.doctor || ''} onChange={e => set('doctor', e.target.value)} />
+            {form.is_reimbursed && (
+              <Field label="报销金额（元）">
+                <Input type="number" step="0.01" value={form.reimburse_amount || ''} onChange={e => set('reimburse_amount', e.target.value)} placeholder="0.00" />
+              </Field>
+            )}
+
+            <Field label="费用（元）">
+              <Input type="number" step="0.01" value={form.cost || ''} onChange={e => set('cost', e.target.value)} placeholder="0.00" />
             </Field>
           </div>
-          <Field label="主诉">
-            <Input value={form.chief_complaint || ''} onChange={e => set('chief_complaint', e.target.value)} placeholder="如：头晕、胸闷一周" />
-          </Field>
-          <Field label="诊断结果">
-            <Textarea value={form.diagnosis || ''} onChange={e => set('diagnosis', e.target.value)} rows={2} />
-          </Field>
-          <Field label="处方 / 用药方案">
-            <Textarea value={form.prescription || ''} onChange={e => set('prescription', e.target.value)} rows={3} placeholder="医生开的药、剂量、用法" />
-          </Field>
-          <Field label="检查报告">
-            <Textarea value={form.examination || ''} onChange={e => set('examination', e.target.value)} rows={3} placeholder="化验结果、检查所见" />
-          </Field>
 
-          {/* 下次就诊日期区间（非必填） */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Field label="下次就诊（开始）" className="flex-1 min-w-0">
-              <Input type="date" value={form.next_visit_date || ''} onChange={e => set('next_visit_date', e.target.value)} />
+          {/* 中栏：诊断记录 */}
+          <div className="space-y-4 lg:border-r lg:border-gray-100 lg:pr-5">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 lg:hidden">
+              <AlertCircle className="w-4 h-4 text-amber-500" /> 诊断记录
+            </div>
+            <Field label="主诉">
+              <Input value={form.chief_complaint || ''} onChange={e => set('chief_complaint', e.target.value)} placeholder="如：头晕、胸闷一周" />
             </Field>
-            <Field label="下次就诊（结束）" className="flex-1 min-w-0">
-              <Input type="date" value={form.next_visit_date_end || ''} onChange={e => set('next_visit_date_end', e.target.value)} />
+            <Field label="诊断结果">
+              <Textarea value={form.diagnosis || ''} onChange={e => set('diagnosis', e.target.value)} rows={3} />
             </Field>
+            <Field label="处方 / 用药方案">
+              <Textarea value={form.prescription || ''} onChange={e => set('prescription', e.target.value)} rows={3} placeholder="医生开的药、剂量、用法" />
+            </Field>
+            <Field label="检查报告">
+              <Textarea value={form.examination || ''} onChange={e => set('examination', e.target.value)} rows={3} placeholder="化验结果、检查所见" />
+            </Field>
+
+            {/* 下次就诊日期区间（级联选择器，非必填） */}
+            <DateRangeField
+              label="下次就诊日期（可选区间）"
+              startVal={form.next_visit_date || ''}
+              endVal={form.next_visit_date_end || ''}
+              onStartChange={v => set('next_visit_date', v)}
+              onEndChange={v => set('next_visit_date_end', v)}
+            />
+
+            {/* 附件图片 */}
+            <MultiImageUpload
+              items={form.attachment_urls || []}
+              onChange={items => set('attachment_urls', items)}
+            />
           </div>
 
-          <Field label="费用（元）">
-            <Input type="number" step="0.01" value={form.cost || ''} onChange={e => set('cost', e.target.value)} placeholder="0.00" className="max-w-[200px]" />
-          </Field>
-
-          {/* 附件图片 */}
-          <MultiImageUpload
-            items={form.attachment_urls || []}
-            onChange={items => set('attachment_urls', items)}
-          />
+          {/* 右栏：本次就诊用药清单（独立编辑） */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
+                <Pill className="w-4 h-4 text-green-500" /> 本次用药
+                {visitMedications?.length > 0 && (
+                  <Badge variant="secondary" className="text-xs">{visitMedications.length}</Badge>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onAddMedication?.(initial?.id)}
+                disabled={!initial?.id}
+                className="h-7 text-xs active:scale-95"
+              >
+                <Plus className="w-3 h-3 mr-1" /> 添加
+              </Button>
+            </div>
+            {!initial?.id ? (
+              <div className="text-xs text-gray-400 py-6 text-center rounded-lg bg-gray-50 border border-dashed border-gray-200">
+                保存就诊记录后可添加本次用药
+              </div>
+            ) : (visitMedications?.length === 0 ? (
+              <p className="text-xs text-gray-400 py-6 text-center">暂无本次用药</p>
+            ) : (
+              <div className="space-y-2">
+                {visitMedications.map(med => (
+                  <div key={med.id} className="flex items-start gap-2 p-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                    <div
+                      className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-green-50 cursor-pointer"
+                      onClick={() => med.photo_url && onPreviewImage?.(med.photo_url)}
+                    >
+                      {med.photo_url
+                        ? <img src={med.photo_url} alt={med.name} className="w-full h-full object-cover" />
+                        : <Pill className="w-4 h-4 text-green-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-medium truncate">{med.name}</span>
+                        <MedicationStatusBadge status={med.status} />
+                      </div>
+                      {med.dosage && <div className="text-xs text-gray-500 mt-0.5 truncate">{med.dosage}</div>}
+                    </div>
+                    <div className="flex gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => onEditMedication?.(med)}
+                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors active:scale-90"
+                        aria-label="编辑药物"
+                      >
+                        <Pill className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => onDeleteMedication?.(med)}
+                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90"
+                        aria-label="删除药物"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
-        <DialogFooter>
+
+        <DialogFooter className="mt-2">
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={handleSubmit} className="bg-[#bbea3b] hover:bg-[#a8d435] text-black">保存</Button>
         </DialogFooter>
@@ -619,7 +835,7 @@ const HealthPage = () => {
 
   const [profileDialog, setProfileDialog] = useState({ open: false, initial: null });
   const [visitDialog, setVisitDialog] = useState({ open: false, initial: null });
-  const [medDialog, setMedDialog] = useState({ open: false, initial: null });
+  const [medDialog, setMedDialog] = useState({ open: false, initial: null, visitId: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const loadProfiles = useCallback(async () => {
@@ -654,6 +870,10 @@ const HealthPage = () => {
     if (selectedProfile && selectedProfile.id === id) loadDetail(id);
   };
 
+  // 最新一次就诊记录（visits 已按 visit_date DESC 排序，[0] 即最新）
+  const latestVisit = selectedProfile?.visits?.[0] || null;
+  const latestVisitMeds = latestVisit?.medications || [];
+
   const saveVisit = async (form) => {
     const isNew = !visitDialog.initial;
     const id = visitDialog.initial?.id;
@@ -675,7 +895,7 @@ const HealthPage = () => {
     const r = await api(path, { method, body: form });
     if (r.error) { toast.error(r.error.message); return; }
     toast.success(isNew ? '药物已添加' : '已保存');
-    setMedDialog({ open: false, initial: null });
+    setMedDialog({ open: false, initial: null, visitId: null });
     if (selectedProfile) loadDetail(selectedProfile.id);
     loadProfiles();
   };
@@ -863,23 +1083,30 @@ const HealthPage = () => {
             )}
           </div>
 
-          {/* 当前用药 */}
+          {/* 当前用药 — 展示最新一次就诊的用药清单 */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Pill className="w-4 h-4 text-green-500" />
-                <h3 className="text-sm font-semibold">用药清单</h3>
-                <Badge variant="secondary" className="text-xs">{selectedProfile.medications?.length || 0}</Badge>
+                <h3 className="text-sm font-semibold">最新用药清单</h3>
+                {latestVisitMeds.length > 0 && <Badge variant="secondary" className="text-xs">{latestVisitMeds.length}</Badge>}
+                {latestVisit && (
+                  <span className="text-xs text-gray-400">· {formatDate(latestVisit.visit_date)}</span>
+                )}
               </div>
-              <Button size="sm" variant="outline" onClick={() => setMedDialog({ open: true, initial: null })} className="active:scale-95">
-                <Plus className="w-3.5 h-3.5 mr-1" /> 添加药物
-              </Button>
+              {latestVisit && (
+                <Button size="sm" variant="outline" onClick={() => setVisitDialog({ open: true, initial: latestVisit })} className="active:scale-95">
+                  <Pill className="w-3.5 h-3.5 mr-1" /> 管理用药
+                </Button>
+              )}
             </div>
-            {selectedProfile.medications?.length === 0 ? (
-              <p className="text-xs text-gray-400 py-6 text-center">暂无药物记录</p>
+            {!latestVisit ? (
+              <p className="text-xs text-gray-400 py-6 text-center">暂无就诊记录，请先添加就诊</p>
+            ) : latestVisitMeds.length === 0 ? (
+              <p className="text-xs text-gray-400 py-6 text-center">本次就诊未记录用药</p>
             ) : (
               <div className="space-y-2">
-                {selectedProfile.medications?.map(med => (
+                {latestVisitMeds.map(med => (
                   <div key={med.id} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
                     {/* 药物图片 */}
                     <div
@@ -908,7 +1135,7 @@ const HealthPage = () => {
                     {/* 操作按钮 */}
                     <div className="flex gap-1 flex-shrink-0">
                       <button
-                        onClick={() => setMedDialog({ open: true, initial: med })}
+                        onClick={() => setMedDialog({ open: true, initial: med, visitId: latestVisit.id })}
                         className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors active:scale-90"
                         aria-label="编辑"
                       >
@@ -928,7 +1155,7 @@ const HealthPage = () => {
             )}
           </div>
 
-          {/* 就诊历史时间轴 */}
+          {/* 就诊历史时间轴 — 整行可点击打开编辑 */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -944,71 +1171,86 @@ const HealthPage = () => {
               <p className="text-xs text-gray-400 py-6 text-center">暂无就诊记录</p>
             ) : (
               <div className="space-y-1">
-                {selectedProfile.visits?.map((v) => (
-                  <div key={v.id} className="relative pl-6 py-3 border-l-2 border-gray-100 last:border-l-0">
-                    <div className="absolute left-[-5px] top-4 w-2 h-2 rounded-full bg-blue-400" />
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        {/* 就诊日期 + 医院 */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium">{formatDate(v.visit_date)}</span>
-                          {v.hospital && <span className="text-xs text-gray-500">{v.hospital}</span>}
-                          {v.department && <Badge variant="outline" className="text-xs">{v.department}</Badge>}
-                          {v.doctor && <span className="text-xs text-gray-400">{v.doctor}医生</span>}
-                        </div>
-                        {/* 就诊详情 */}
-                        {v.chief_complaint && <div className="text-xs text-gray-600 mt-1.5">主诉：{v.chief_complaint}</div>}
-                        {v.diagnosis && <div className="text-xs text-gray-600 mt-1">诊断：{v.diagnosis}</div>}
-                        {v.prescription && <div className="text-xs text-gray-600 mt-1">处方：{v.prescription}</div>}
-                        {v.examination && <div className="text-xs text-gray-500 mt-1">检查：{v.examination}</div>}
-                        {/* 费用 + 下次就诊 */}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
-                          {v.cost != null && <span>费用：¥{Number(v.cost).toFixed(2)}</span>}
-                          {(v.next_visit_date || v.next_visit_date_end) && (
-                            <span className="text-amber-600">下次就诊：{formatDateRange(v.next_visit_date, v.next_visit_date_end)}</span>
+                {selectedProfile.visits?.map((v) => {
+                  const visitMeds = v.medications || [];
+                  return (
+                    <div
+                      key={v.id}
+                      onClick={() => setVisitDialog({ open: true, initial: v })}
+                      className="relative pl-6 py-3 border-l-2 border-gray-100 last:border-l-0 cursor-pointer hover:bg-gray-50 active:bg-gray-100 rounded-r-md transition-colors -ml-2 pl-4"
+                    >
+                      <div className="absolute left-[3px] top-4 w-2 h-2 rounded-full bg-blue-400" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          {/* 就诊日期 + 医院 + 报销标签 */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">{formatDate(v.visit_date)}</span>
+                            {v.hospital && <span className="text-xs text-gray-500">{v.hospital}</span>}
+                            {v.department && <Badge variant="outline" className="text-xs">{v.department}</Badge>}
+                            {v.doctor && <span className="text-xs text-gray-400">{v.doctor}医生</span>}
+                            {/* 报销标签 */}
+                            {v.is_reimbursed ? (
+                              <Badge className="text-xs bg-green-100 text-green-700 hover:bg-green-100">{v.reimburse_amount != null ? `已报销 ¥${Number(v.reimburse_amount).toFixed(2)}` : '已报销'}</Badge>
+                            ) : (
+                              v.cost != null && <Badge variant="outline" className="text-xs text-gray-400">未报销</Badge>
+                            )}
+                          </div>
+                          {/* 就诊详情 */}
+                          {v.chief_complaint && <div className="text-xs text-gray-600 mt-1.5">主诉：{v.chief_complaint}</div>}
+                          {v.diagnosis && <div className="text-xs text-gray-600 mt-1">诊断：{v.diagnosis}</div>}
+                          {v.prescription && <div className="text-xs text-gray-600 mt-1">处方：{v.prescription}</div>}
+                          {v.examination && <div className="text-xs text-gray-500 mt-1">检查：{v.examination}</div>}
+                          {/* 本次用药 */}
+                          {visitMeds.length > 0 && (
+                            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                              <Pill className="w-3 h-3 text-green-500 flex-shrink-0" />
+                              {visitMeds.map(med => (
+                                <span key={med.id} className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700">
+                                  {med.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {/* 费用 + 下次就诊 */}
+                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
+                            {v.cost != null && <span>费用：¥{Number(v.cost).toFixed(2)}</span>}
+                            {(v.next_visit_date || v.next_visit_date_end) && (
+                              <span className="text-amber-600">下次就诊：{formatDateRange(v.next_visit_date, v.next_visit_date_end)}</span>
+                            )}
+                          </div>
+                          {/* 就诊附件图片 */}
+                          {Array.isArray(v.attachment_urls) && v.attachment_urls.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {v.attachment_urls.map((att, idx) => (
+                                <div key={idx} className="relative group">
+                                  <img
+                                    src={att.url}
+                                    alt={`附件${idx + 1}`}
+                                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-md object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                                    onClick={(e) => { e.stopPropagation(); setPreviewImage(att.url); }}
+                                  />
+                                  {att.note && (
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded-b-md truncate max-w-full">
+                                      {att.note}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                        {/* 就诊附件图片 */}
-                        {Array.isArray(v.attachment_urls) && v.attachment_urls.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {v.attachment_urls.map((att, idx) => (
-                              <div key={idx} className="relative group">
-                                <img
-                                  src={att.url}
-                                  alt={`附件${idx + 1}`}
-                                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-md object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
-                                  onClick={() => setPreviewImage(att.url)}
-                                />
-                                {att.note && (
-                                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded-b-md truncate max-w-full">
-                                    {att.note}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      {/* 操作按钮 */}
-                      <div className="flex gap-1 flex-shrink-0">
+                        {/* 删除按钮（阻止冒泡，避免触发行点击） */}
                         <button
-                          onClick={() => setVisitDialog({ open: true, initial: v })}
-                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors active:scale-90"
-                          aria-label="编辑"
-                        >
-                          <Calendar className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget({ type: 'visit', id: v.id, name: '就诊记录' })}
-                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'visit', id: v.id, name: '就诊记录' }); }}
+                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors active:scale-90 flex-shrink-0"
                           aria-label="删除"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1027,13 +1269,20 @@ const HealthPage = () => {
         onSubmit={saveVisit}
         initial={visitDialog.initial}
         profileId={selectedProfile?.id}
+        lastVisit={selectedProfile?.visits?.[0] || null}
+        visitMedications={visitDialog.initial?.medications || []}
+        onAddMedication={(visitId) => setMedDialog({ open: true, initial: null, visitId })}
+        onEditMedication={(med) => setMedDialog({ open: true, initial: med, visitId: visitDialog.initial?.id })}
+        onDeleteMedication={(med) => setDeleteTarget({ type: 'medication', id: med.id, name: med.name })}
+        onPreviewImage={setPreviewImage}
       />
       <MedicationFormDialog
         open={medDialog.open}
-        onClose={() => setMedDialog({ open: false, initial: null })}
+        onClose={() => setMedDialog({ open: false, initial: null, visitId: null })}
         onSubmit={saveMed}
         initial={medDialog.initial}
         profileId={selectedProfile?.id}
+        visitId={medDialog.visitId}
       />
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <AlertDialogContent>
