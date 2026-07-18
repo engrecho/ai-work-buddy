@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Lock, Plus, Search, Eye, EyeOff, Copy, Check, Trash2, ShieldCheck, Clock, ExternalLink, Power, CheckSquare, Square } from 'lucide-react';
+import { Lock, Plus, Search, Eye, EyeOff, Copy, Check, Trash2, ShieldCheck, Clock, ExternalLink, Power, CheckSquare, Square, Pencil, Smartphone, Mail, KeyRound, CreditCard, FileLock, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,6 +56,15 @@ const CATEGORIES = [
 ];
 
 function getCategoryLabel(v) { return CATEGORIES.find(c => c.value === v)?.label || v; }
+
+// 分类视觉映射：色条颜色 + 图标 + 浅色背景
+const CATEGORY_STYLES = {
+  password: { bar: '#3b82f6', icon: KeyRound, tint: '#eff6ff' },
+  apikey:   { bar: '#8b5cf6', icon: KeyRound, tint: '#f5f3ff' },
+  card:     { bar: '#f59e0b', icon: CreditCard, tint: '#fffbeb' },
+  note:     { bar: '#06b6d4', icon: FileLock, tint: '#ecfeff' },
+};
+function getCategoryStyle(v) { return CATEGORY_STYLES[v] || CATEGORY_STYLES.password; }
 
 const VAULT_TOKEN_KEY = 'ai_buddy_vault_token';
 const VAULT_EXPIRES_KEY = 'ai_buddy_vault_expires';
@@ -457,21 +466,28 @@ const VaultPage = () => {
       </div>
 
       {/* 筛选 */}
-      <div className="flex items-center gap-2 flex-wrap px-3 sm:px-4 md:px-6 py-2 bg-white border-b border-gray-100">
+      <div className="flex items-center gap-2 px-3 sm:px-4 md:px-6 py-2.5 bg-white border-b border-gray-100">
+        {/* 搜索 */}
         <div className="relative flex-1 min-w-0 max-w-xs">
           <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <Input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="搜索标题/用户名" className="pl-8 h-8 text-sm" />
+          <Input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="搜索标题/用户名/手机号" className="pl-8 h-8 text-sm" />
         </div>
-        <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="w-28 h-8 text-sm flex-shrink-0"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部分类</SelectItem>
-            {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button size="sm" variant={showInactive ? 'default' : 'outline'} onClick={() => setShowInactive(!showInactive)} className="h-8 text-xs flex-shrink-0">
+        {/* 分类 Tab - 分段控件式 */}
+        <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5 overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
+          <button onClick={() => setCategory('all')} className={`px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all ${category === 'all' ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+            全部
+          </button>
+          {CATEGORIES.map(c => (
+            <button key={c.value} onClick={() => setCategory(c.value)} className={`px-2.5 py-1 rounded-md text-xs whitespace-nowrap transition-all flex items-center gap-1 ${category === c.value ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getCategoryStyle(c.value).bar }} />
+              {c.label}
+            </button>
+          ))}
+        </div>
+        {/* 状态切换 */}
+        <button onClick={() => setShowInactive(!showInactive)} className={`h-8 px-2.5 rounded-lg text-xs flex items-center gap-1 transition-all flex-shrink-0 ${showInactive ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
           {showInactive ? '含废弃' : '仅使用中'}
-        </Button>
+        </button>
       </div>
 
       {/* 列表 */}
@@ -480,10 +496,13 @@ const VaultPage = () => {
           <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-60 text-gray-400">
-            <Lock className="w-12 h-12 mb-3 opacity-30" />
-            <p className="text-sm mb-3">还没有保存任何条目</p>
-            <Button size="sm" className="bg-[#bbea3b] hover:bg-[#a8d435] text-black" onClick={() => setItemDialog({ open: true, initial: null })}>
-              <Plus className="w-4 h-4 mr-1" /> 添加第一个条目
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center mb-4 ring-1 ring-gray-100">
+              <Lock className="w-10 h-10 text-gray-300" />
+            </div>
+            <p className="text-sm font-medium text-gray-500">保险箱是空的</p>
+            <p className="text-xs text-gray-400 mt-1">添加你的第一个账号密码，开始安全管理</p>
+            <Button size="sm" className="mt-4 bg-[#bbea3b] hover:bg-[#a8d435] text-black" onClick={() => setItemDialog({ open: true, initial: null })}>
+              <Plus className="w-4 h-4 mr-1" /> 添加条目
             </Button>
           </div>
         ) : (
@@ -491,65 +510,93 @@ const VaultPage = () => {
             {items.map(item => {
               const data = revealed[item.id];
               const isCopied = copiedId === item.id;
+              const catStyle = getCategoryStyle(item.category);
+              const CatIcon = catStyle.icon;
               return (
-                <div key={item.id} className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-sm transition-all">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-xs flex-shrink-0">{getCategoryLabel(item.category)}</Badge>
-                        <span className="text-sm font-medium truncate min-w-0">{item.title}</span>
-                        {item.is_active
-                          ? <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
-                          : <Badge variant="secondary" className="text-xs text-gray-400 flex-shrink-0">废弃</Badge>}
+                <div key={item.id} className="group relative bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all duration-200 overflow-hidden">
+                  {/* 左侧分类色条 */}
+                  <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: catStyle.bar }} />
+
+                  <div className="pl-4 pr-3 py-3">
+                    {/* 头部行：分类图标 + 标题 + 状态 */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: catStyle.tint }}>
+                            <CatIcon className="w-3.5 h-3.5" style={{ color: catStyle.bar }} />
+                          </div>
+                          <h3 className="text-sm font-semibold text-gray-900 truncate">{item.title}</h3>
+                          {item.is_active ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-100 flex-shrink-0">使用中</span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-50 text-gray-400 border border-gray-100 flex-shrink-0">已废弃</span>
+                          )}
+                        </div>
+                        {/* 用户名 + URL */}
+                        {(item.username || item.url) && (
+                          <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 pl-8">
+                            {item.username && <span className="truncate">{item.username}</span>}
+                            {item.url && (
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600 truncate inline-flex items-center gap-0.5">
+                                <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
+                                <span className="truncate">{item.url.replace(/^https?:\/\//, '').slice(0, 30)}</span>
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {/* 联系方式区：用户名 / 手机号 / 邮箱 */}
-                      {(item.username || item.phone || item.email) && (
-                        <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                          {item.username && <span className="truncate">用户名: {item.username}</span>}
-                          {item.phone && <span className="truncate">手机: {item.phone}</span>}
-                          {item.email && <span className="truncate">邮箱: {item.email}</span>}
-                        </div>
-                      )}
-                      {/* 登录方式标签 */}
-                      {Array.isArray(item.login_methods) && item.login_methods.length > 0 && (
-                        <div className="flex items-center gap-1 flex-wrap mt-1">
-                          {item.login_methods.map(m => (
-                            <span key={m} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
-                              {getLoginMethodLabel(m)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {item.url && (
-                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline mt-0.5 inline-flex items-center gap-0.5 min-w-0 max-w-full">
-                          <span className="truncate">{item.url.replace(/^https?:\/\//, '').slice(0, 40)}</span>
-                          <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
-                        </a>
-                      )}
-                      {/* 密码显示区 */}
-                      <div className="flex items-center gap-2 mt-1 min-w-0">
-                        <code className="text-xs bg-gray-50 px-2 py-0.5 rounded font-mono min-w-0 break-all flex-1">
-                          {data ? (showSecret[item.id] ? data.secret : '••••••••') : '••••••••'}
-                        </code>
-                        <button onClick={() => { revealSecret(item.id); setShowSecret(s => ({ ...s, [item.id]: !s[item.id] })); }}
-                          className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
+                      {/* hover 操作 */}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0">
+                        <button onClick={() => toggleActive(item)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title={item.is_active ? '标记废弃' : '恢复使用'}>
+                          <Power className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setItemDialog({ open: true, initial: { ...item, ...data } })} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="编辑">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setDeleteTarget(item)} className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="删除">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 联系方式 + 登录方式 */}
+                    {(item.phone || item.email || (Array.isArray(item.login_methods) && item.login_methods.length > 0)) && (
+                      <div className="flex items-center gap-2 flex-wrap mt-1.5 pl-8">
+                        {item.phone && (
+                          <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                            <Smartphone className="w-3 h-3" />{item.phone}
+                          </span>
+                        )}
+                        {item.email && (
+                          <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                            <Mail className="w-3 h-3" />{item.email}
+                          </span>
+                        )}
+                        {Array.isArray(item.login_methods) && item.login_methods.map(m => (
+                          <span key={m} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
+                            {getLoginMethodLabel(m)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 密码区 - 视觉焦点 */}
+                    <div className="mt-2 flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">
+                      <code className="flex-1 text-xs font-mono text-gray-600 min-w-0 truncate">
+                        {data ? (showSecret[item.id] ? data.secret : '••••••••••••') : '••••••••••••'}
+                      </code>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <button onClick={() => { revealSecret(item.id); setShowSecret(s => ({ ...s, [item.id]: !s[item.id] })); }} className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors">
                           {showSecret[item.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                         </button>
-                        <button onClick={() => copySecret(item.id)} className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0">
+                        <button onClick={() => copySecret(item.id)} className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors">
                           {isCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
-                      {data?.notes && <div className="text-xs text-gray-400 mt-1 break-words">{data.notes}</div>}
                     </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <Button variant="ghost" size="sm" onClick={() => toggleActive(item)} className="h-7 px-2 text-xs" title={item.is_active ? '标记废弃' : '恢复使用'}>
-                        <Power className="w-3 h-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setItemDialog({ open: true, initial: { ...item, ...data } })} className="h-7 px-2 text-xs">编辑</Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(item)} className="h-7 px-2 text-xs text-red-500">
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
+
+                    {/* 备注 */}
+                    {data?.notes && <p className="text-[11px] text-gray-400 mt-1.5 break-words">{data.notes}</p>}
                   </div>
                 </div>
               );
