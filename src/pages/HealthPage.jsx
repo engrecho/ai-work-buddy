@@ -51,6 +51,14 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+// 原图 URL → 缩略图 URL（/api/health/images/xxx.jpg → /api/health/thumb/xxx.jpg?w=300）
+function toThumbUrl(url, width = 300) {
+  if (!url) return url;
+  const m = url.match(/\/api\/health\/images\/(.+)$/);
+  if (m) return `/api/health/thumb/${m[1]}?w=${width}`;
+  return url;
+}
+
 // 上传健康图片（药物照片、就诊附件等）
 async function uploadHealthImage(file) {
   const formData = new FormData();
@@ -164,8 +172,9 @@ function SingleImageUpload({ value, onChange, label = '图片' }) {
         {value ? (
           <div className="relative group flex-shrink-0">
             <img
-              src={value}
+              src={toThumbUrl(value, 200)}
               alt="预览"
+              loading="lazy"
               className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover border border-gray-200"
             />
             <button
@@ -262,7 +271,7 @@ function MultiImageUpload({ items = [], onChange }) {
         <div className="space-y-2">
           {items.map((item, idx) => (
             <div key={idx} className="flex gap-2 items-start p-2 rounded-lg bg-gray-50">
-              <img src={item.url} alt={`附件${idx + 1}`} className="w-12 h-12 sm:w-14 sm:h-14 rounded-md object-cover flex-shrink-0" />
+              <img src={toThumbUrl(item.url, 200)} alt={`附件${idx + 1}`} loading="lazy" className="w-12 h-12 sm:w-14 sm:h-14 rounded-md object-cover flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 {editingIdx === idx ? (
                   <div className="flex items-center gap-1">
@@ -722,7 +731,7 @@ function VisitFormDialog({ open, onClose, onSubmit, initial, profileId, lastVisi
                       onClick={() => med.photo_url && onPreviewImage?.(med.photo_url)}
                     >
                       {med.photo_url
-                        ? <img src={med.photo_url} alt={med.name} className="w-full h-full object-cover" />
+                        ? <img src={toThumbUrl(med.photo_url, 200)} alt={med.name} loading="lazy" className="w-full h-full object-cover" />
                         : <Pill className="w-4 h-4 text-green-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1146,7 +1155,7 @@ const HealthPage = () => {
                       onClick={() => med.photo_url && setPreviewImage(med.photo_url)}
                     >
                       {med.photo_url
-                        ? <img src={med.photo_url} alt={med.name} className="w-full h-full object-cover" />
+                        ? <img src={toThumbUrl(med.photo_url, 200)} alt={med.name} loading="lazy" className="w-full h-full object-cover" />
                         : <Pill className="w-5 h-5 text-green-500" />}
                     </div>
                     {/* 药物信息 */}
@@ -1260,8 +1269,9 @@ const HealthPage = () => {
                               {v.attachment_urls.map((att, idx) => (
                                 <div key={idx} className="relative group">
                                   <img
-                                    src={att.url}
+                                    src={toThumbUrl(att.url, 200)}
                                     alt={`附件${idx + 1}`}
+                                    loading="lazy"
                                     className="w-14 h-14 sm:w-16 sm:h-16 rounded-md object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
                                     onClick={(e) => { e.stopPropagation(); setPreviewImage(att.url); }}
                                   />

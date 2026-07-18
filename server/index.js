@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
+import sharp from 'sharp';
 import { fileURLToPath } from 'url';
 import {
   pool, TABLE_COLUMNS, JSON_COLUMNS, DATETIME_COLUMNS, BOOLEAN_COLUMNS, PUBLIC_TABLES
@@ -57,11 +58,46 @@ app.use('/api/avatars', express.static(AVATARS_DIR, {
 
 // ── 健康图片静态服务（药物照片、就诊附件等） ──────────────────────
 const HEALTH_IMG_DIR = path.join(__dirname, '..', 'uploads', 'health');
+const HEALTH_IMG_CACHE_DIR = path.join(HEALTH_IMG_DIR, '_cache');
 fs.mkdirSync(HEALTH_IMG_DIR, { recursive: true });
+fs.mkdirSync(HEALTH_IMG_CACHE_DIR, { recursive: true });
 app.use('/api/health/images', express.static(HEALTH_IMG_DIR, {
   maxAge: '7d',
   setHeaders: (res) => { res.setHeader('Cache-Control', 'public, max-age=604800'); },
 }));
+
+// 动态缩略图路由：/api/health/thumb/:filename?w=300 — 用 sharp 实时压缩并缓存到 _cache/
+app.get('/api/health/thumb/:filename', async (req, res) => {
+  const { filename } = req.params;
+  const width = Math.min(parseInt(req.query.w, 10) || 300, 800);
+  const srcPath = path.join(HEALTH_IMG_DIR, filename);
+  const cacheKey = `${width}_${filename.replace(/\.(jpe?g|png|webp|gif)$/i, '.webp')}`;
+  const cachePath = path.join(HEALTH_IMG_CACHE_DIR, cacheKey);
+
+  try {
+    // 安全检查：防止路径穿越
+    if (!fs.existsSync(srcPath) || filename.includes('..') || filename.includes('/')) {
+      return res.status(404).send('Not found');
+    }
+    // 缓存命中直接返回
+    if (fs.existsSync(cachePath)) {
+      res.set('Content-Type', 'image/webp');
+      res.set('Cache-Control', 'public, max-age=2592000');
+      return res.sendFile(cachePath);
+    }
+    // 实时压缩
+    await sharp(srcPath)
+      .resize(width, null, { withoutEnlargement: true })
+      .webp({ quality: 75 })
+      .toFile(cachePath);
+    res.set('Content-Type', 'image/webp');
+    res.set('Cache-Control', 'public, max-age=2592000');
+    return res.sendFile(cachePath);
+  } catch (err) {
+    console.error('thumb error:', err.message);
+    return res.status(500).send('Error');
+  }
+});
 
 // ── 头像上传 multer 配置 ──────────────────────────────────────────
 const avatarUpload = multer({
@@ -977,7 +1013,7 @@ app.post('/api/auth/avatar', authMiddleware, (req, res, next) => {
   }
 });
 
-// 上传健康图片（药物照片、就诊附件等）—— 文件存 uploads/health/
+// 上传健康图片（药物照片、就诊附件等）—— 上传后用 sharp 压缩
 app.post('/api/health/upload', authMiddleware, (req, res, next) => {
   healthImgUpload.single('file')(req, res, (err) => {
     if (err) return res.json({ data: null, error: { message: err.message || '上传失败' } });
@@ -986,8 +1022,18 @@ app.post('/api/health/upload', authMiddleware, (req, res, next) => {
 }, async (req, res) => {
   try {
     if (!req.file) return res.json({ data: null, error: { message: '未收到文件' } });
-    const url = `/api/health/images/${req.file.filename}`;
-    return res.json({ data: { url, filename: req.file.filename }, error: null });
+    // 用 sharp 压缩原图（max 1200px, webp quality 80），替换原文件
+    const originalPath = req.file.path;
+    const compressedPath = originalPath.replace(/\.(jpe?g|png|webp|gif)$/i, '.webp');
+    await sharp(originalPath)
+      .resize(1200, null, { withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toFile(compressedPath);
+    // 删除原始大文件（如果扩展名不同）
+    if (originalPath !== compressedPath) fs.unlinkSync(originalPath);
+    const filename = path.basename(compressedPath);
+    const url = `/api/health/images/${filename}`;
+    return res.json({ data: { url, filename }, error: null });
   } catch (err) {
     return res.json({ data: null, error: { message: err.message } });
   }
