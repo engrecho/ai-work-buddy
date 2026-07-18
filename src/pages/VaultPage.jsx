@@ -361,6 +361,26 @@ const VaultPage = () => {
     setRevealed(prev => ({ ...prev, [id]: { secret: r.data.secret, notes: r.data.notes } }));
   };
 
+  // 点击编辑：先获取明文（如果还没 reveal 过），再打开编辑对话框
+  const editItem = async (item) => {
+    let data = revealed[item.id];
+    if (!data) {
+      const r = await api(`/api/vault/items/${item.id}`, { headers: { 'X-Vault-Token': getVaultToken() } });
+      if (r.error) {
+        if (r.error.message?.includes('过期') || r.error.message?.includes('未解锁')) {
+          clearVaultData();
+          setUnlocked(false);
+          setUnlockDialog(true);
+        }
+        toast.error(r.error.message);
+        return;
+      }
+      data = { secret: r.data.secret, notes: r.data.notes };
+      setRevealed(prev => ({ ...prev, [item.id]: data }));
+    }
+    setItemDialog({ open: true, initial: { ...item, ...data } });
+  };
+
   const copySecret = async (id) => {
     await revealSecret(id);
     const data = revealed[id];
@@ -538,7 +558,7 @@ const VaultPage = () => {
                       </div>
                       {/* hover 操作 */}
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0">
-                        <button onClick={() => setItemDialog({ open: true, initial: { ...item, ...data } })} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="编辑">
+                        <button onClick={() => editItem(item)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="编辑">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={() => setDeleteTarget(item)} className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="删除">
