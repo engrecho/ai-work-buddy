@@ -2,9 +2,10 @@
 # 一次性任务：给 vault_items 表加联系方式字段
 #
 # 字段:
-#   phone              varchar(20)   手机号（可选）
-#   phone_login_enabled tinyint(1)   是否支持手机号登录（0=否, 1=是）
-#   email              varchar(255)  邮箱（可选）
+#   phone          varchar(20)    手机号（可选）
+#   email          varchar(255)   邮箱（可选）
+#   login_methods  json           支持的登录方式（多选数组）
+#                                 值: "phone" / "wechat" / "qq" / "google"
 #
 # 安全性: 幂等, 先查 INFORMATION_SCHEMA 判断字段是否存在, 不存在才 ADD
 set +e
@@ -30,8 +31,8 @@ add_column_if_missing() {
 }
 
 add_column_if_missing "phone" "phone VARCHAR(20) DEFAULT NULL AFTER username"
-add_column_if_missing "phone_login_enabled" "phone_login_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER phone"
-add_column_if_missing "email" "email VARCHAR(255) DEFAULT NULL AFTER phone_login_enabled"
+add_column_if_missing "email" "email VARCHAR(255) DEFAULT NULL AFTER phone"
+add_column_if_missing "login_methods" "login_methods JSON DEFAULT NULL AFTER email"
 
 echo ""
 echo "[once] ===== 完成 ====="

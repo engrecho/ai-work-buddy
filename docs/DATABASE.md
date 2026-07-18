@@ -1,6 +1,6 @@
 # AI-Buddy 数据库结构说明
 
-> 最后更新：2026-07-16
+> 最后更新：2026-07-18
 > 数据库：MySQL 5.7+ / 8.0
 > 部署位置：腾讯云宝塔（生产）/ 本地（开发）
 > 协议：自建 Express HTTP API
@@ -42,6 +42,7 @@
 | `health_profiles` | 健康档案（就诊人） | AUTO_INCREMENT | 否 |
 | `health_visits` | 就诊记录 | AUTO_INCREMENT | 否 |
 | `health_medications` | 用药记录 | AUTO_INCREMENT | 否 |
+| `vault_items` | 密码保险箱（加密存储） | AUTO_INCREMENT | **是**（`deleted_at`） |
 
 **主键约定**：
 - 早期版本统一用「手写 bigint（`Date.now()` 时间戳）」；迁移到 MySQL 后，POST 接口要求 DB 给出 `insertId`，因此部分表改为 `AUTO_INCREMENT`（详见 `deploy/migrate-add-auto-increment.sql`）
@@ -357,6 +358,56 @@ CREATE TABLE `health_medications` (
 - 后端 `GET /api/health_profiles/:id` 详情接口会自动把药物按 `visit_id` 分组：
   - `visits[].medications` = 本次就诊的药物
   - `profile.medications` = 未关联就诊的顶层药物
+
+---
+
+## 15. vault_items（密码保险箱） — 软删
+
+```sql
+CREATE TABLE `vault_items` (
+  `id`              BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id`         BIGINT NOT NULL,
+  `category`        VARCHAR(20) NOT NULL DEFAULT 'password',  -- password/apikey/card/note
+  `title`           VARCHAR(200) NOT NULL,                     -- 标题
+  `username`        VARCHAR(255) DEFAULT NULL,                  -- 用户名
+  `phone`           VARCHAR(20) DEFAULT NULL,                   -- 手机号
+  `email`           VARCHAR(255) DEFAULT NULL,                   -- 邮箱
+  `login_methods`   JSON DEFAULT NULL,                          -- 支持的登录方式（多选数组：phone/wechat/qq/google）
+  `cipher_secret`   TEXT NOT NULL,                              -- AES-256-CBC 加密后的密码/密钥
+  `url`             TEXT DEFAULT NULL,                          -- 关联网址（明文）
+  `cipher_notes`    TEXT DEFAULT NULL,                          -- AES-256-CBC 加密后的备注
+  `is_active`       TINYINT(1) NOT NULL DEFAULT 1,              -- 状态：1=使用中, 0=已废弃
+  `tags`            JSON DEFAULT NULL,
+  `deleted_at`      TIMESTAMP NULL DEFAULT NULL,
+  `created_at`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY `idx_vault_items_user` (`user_id`, `deleted_at`, `category`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+- **加密存储**：`cipher_secret` 和 `cipher_notes` 用 AES-256-CBC 加密（密钥在服务端 `.env` 的 `VAULT_ENCRYPTION_KEY`）
+- **解锁机制**：调用 `POST /api/vault/unlock` 用登录密码验证身份，签发 1 小时有效的 `vault_token`，存 localStorage
+- **明文返回**：列表接口不返回明文密码；单条详情接口需要 `X-Vault-Token` Header 才返回 `secret` / `notes` 明文
+- **`category` 分类**：`password`(账号密码) / `apikey`(API Key) / `card`(银行卡) / `note`(敏感备忘)
+- **`login_methods` 登录方式**（多选 JSON 数组）：
+  - `phone` —— 手机号登录
+  - `wechat` —— 微信登录
+  - `qq` —— QQ 登录
+  - `google` —— 谷歌登录
+- **`is_active` 状态**：1=使用中 / 0=已废弃，前端表单用下拉选择
+- **搜索**：列表接口的 `keyword` 参数会模糊匹配 `title` / `username` / `phone` / `email`
+- **软删**：删除是更新 `deleted_at`，列表查询自动过滤 `deleted_at IS NULL`
+
+### 前端 API 路径
+
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/api/vault/unlock` | POST | 解锁（用登录密码换 vault_token，1 小时有效） |
+| `/api/vault/items` | GET | 列表（返回元数据，不含明文密码；支持 `category` / `keyword` / `is_active` 查询参数） |
+| `/api/vault/items` | POST | 创建条目（前端传明文，后端加密存储） |
+| `/api/vault/items/:id` | GET | 详情（需 `X-Vault-Token` Header，返回明文 `secret` / `notes`） |
+| `/api/vault/items/:id` | PATCH | 更新字段 |
+| `/api/vault/items/:id` | DELETE | 软删 |
 
 ---
 

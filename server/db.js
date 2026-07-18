@@ -90,8 +90,9 @@ export const TABLE_COLUMNS = {
   ],
   // ── 密码保险箱模块 ──
   vault_items: [
-    'id', 'user_id', 'category', 'title', 'username', 'cipher_secret', 'url',
-    'cipher_notes', 'is_active', 'tags', 'deleted_at', 'created_at', 'updated_at'
+    'id', 'user_id', 'category', 'title', 'username', 'phone', 'email', 'login_methods',
+    'cipher_secret', 'url', 'cipher_notes', 'is_active', 'tags',
+    'deleted_at', 'created_at', 'updated_at'
   ],
 };
 
@@ -112,7 +113,7 @@ export const JSON_COLUMNS = {
   rss_articles: ['categories'],
   health_profiles: ['tags'],
   health_visits: ['attachment_urls'],
-  vault_items: ['tags'],
+  vault_items: ['tags', 'login_methods'],
 };
 
 // ── DATETIME 列 ──────────────────────────────────────────────

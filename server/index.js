@@ -1418,10 +1418,10 @@ app.get('/api/vault/items', authMiddleware, async (req, res) => {
       params.push(is_active === 'true' ? 1 : 0);
     }
     if (keyword) {
-      conditions.push('(title LIKE ? OR username LIKE ?)');
-      params.push(`%${keyword}%`, `%${keyword}%`);
+      conditions.push('(title LIKE ? OR username LIKE ? OR phone LIKE ? OR email LIKE ?)');
+      params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
-    const sql = `SELECT id, category, title, username, url, is_active, tags, created_at, updated_at
+    const sql = `SELECT id, category, title, username, phone, email, login_methods, url, is_active, tags, created_at, updated_at
                   FROM vault_items WHERE ${conditions.join(' AND ')}
                   ORDER BY updated_at DESC`;
     const [rows] = await pool.query(sql, params);
@@ -1469,7 +1469,7 @@ app.get('/api/vault/items/:id', authMiddleware, vaultAuthMiddleware, async (req,
 
 // 创建条目（前端传明文，后端加密存储）
 app.post('/api/vault/items', authMiddleware, async (req, res) => {
-  const { category = 'password', title, username, secret, url, notes, tags, is_active = true } = req.body || {};
+  const { category = 'password', title, username, phone, email, login_methods, secret, url, notes, tags, is_active = true } = req.body || {};
   if (!title) {
     return res.json({ data: null, error: { message: '标题不能为空' } });
   }
@@ -1480,9 +1480,10 @@ app.post('/api/vault/items', authMiddleware, async (req, res) => {
     const cipherSecret = encryptVault(secret);
     const cipherNotes = notes ? encryptVault(notes) : null;
     const [result] = await pool.query(
-      `INSERT INTO vault_items (user_id, category, title, username, cipher_secret, url, cipher_notes, is_active, tags)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, category, title, username || null, cipherSecret, url || null, cipherNotes, is_active ? 1 : 0, JSON.stringify(tags || [])]
+      `INSERT INTO vault_items (user_id, category, title, username, phone, email, login_methods, cipher_secret, url, cipher_notes, is_active, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, category, title, username || null, phone || null, email || null,
+       JSON.stringify(login_methods || []), cipherSecret, url || null, cipherNotes, is_active ? 1 : 0, JSON.stringify(tags || [])]
     );
     return res.json({ data: { id: result.insertId }, error: null });
   } catch (err) {
@@ -1497,12 +1498,15 @@ app.patch('/api/vault/items/:id', authMiddleware, async (req, res) => {
   if (!Number.isFinite(id)) {
     return res.json({ data: null, error: { message: 'id 无效' } });
   }
-  const { category, title, username, secret, url, notes, tags, is_active } = req.body || {};
+  const { category, title, username, phone, email, login_methods, secret, url, notes, tags, is_active } = req.body || {};
   const updates = [];
   const params = [];
   if (category !== undefined) { updates.push('category = ?'); params.push(category); }
   if (title !== undefined) { updates.push('title = ?'); params.push(title); }
   if (username !== undefined) { updates.push('username = ?'); params.push(username); }
+  if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+  if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+  if (login_methods !== undefined) { updates.push('login_methods = ?'); params.push(JSON.stringify(login_methods || [])); }
   if (secret !== undefined) { updates.push('cipher_secret = ?'); params.push(encryptVault(secret)); }
   if (url !== undefined) { updates.push('url = ?'); params.push(url); }
   if (notes !== undefined) { updates.push('cipher_notes = ?'); params.push(notes ? encryptVault(notes) : null); }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Lock, Plus, Search, Eye, EyeOff, Copy, Check, Trash2, ShieldCheck, Clock, ExternalLink, Power } from 'lucide-react';
+import { Lock, Plus, Search, Eye, EyeOff, Copy, Check, Trash2, ShieldCheck, Clock, ExternalLink, Power, CheckSquare, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+
+// 登录方式常量
+const LOGIN_METHODS = [
+  { value: 'phone', label: '手机号登录' },
+  { value: 'wechat', label: '微信登录' },
+  { value: 'qq', label: 'QQ 登录' },
+  { value: 'google', label: '谷歌登录' },
+];
+
+function getLoginMethodLabel(v) { return LOGIN_METHODS.find(m => m.value === v)?.label || v; }
 
 // ── API 工具 ────────────────────────────────────────────────
 function getAuthHeaders(json = false) {
@@ -112,16 +122,39 @@ function UnlockDialog({ open, onClose, onSuccess }) {
 // ── 条目表单 ────────────────────────────────────────────────
 function ItemFormDialog({ open, onClose, onSubmit, initial }) {
   const [form, setForm] = useState({
-    category: 'password', title: '', username: '', secret: '', url: '', notes: '', is_active: true,
+    category: 'password', title: '', url: '', username: '', phone: '', email: '',
+    login_methods: [], secret: '', notes: '', is_active: true,
   });
 
   useEffect(() => {
     if (open) {
-      setForm(initial || {
-        category: 'password', title: '', username: '', secret: '', url: '', notes: '', is_active: true,
+      setForm(initial ? {
+        category: initial.category || 'password',
+        title: initial.title || '',
+        url: initial.url || '',
+        username: initial.username || '',
+        phone: initial.phone || '',
+        email: initial.email || '',
+        login_methods: Array.isArray(initial.login_methods) ? initial.login_methods : [],
+        secret: initial.secret || '',
+        notes: initial.notes || '',
+        is_active: initial.is_active !== false && initial.is_active !== 0,
+      } : {
+        category: 'password', title: '', url: '', username: '', phone: '', email: '',
+        login_methods: [], secret: '', notes: '', is_active: true,
       });
     }
   }, [open, initial]);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const toggleLoginMethod = (value) => {
+    setForm(f => {
+      const list = Array.isArray(f.login_methods) ? f.login_methods : [];
+      const has = list.includes(value);
+      return { ...f, login_methods: has ? list.filter(v => v !== value) : [...list, value] };
+    });
+  };
 
   const handleSubmit = () => {
     if (!form.title.trim()) { toast.error('请填写标题'); return; }
@@ -136,43 +169,95 @@ function ItemFormDialog({ open, onClose, onSubmit, initial }) {
           <DialogTitle>{initial ? '编辑条目' : '新增条目'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="w-full sm:w-36 flex-shrink-0">
-              <label className="text-xs text-gray-500 mb-1 block">分类</label>
-              <Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-1 min-w-0">
-              <label className="text-xs text-gray-500 mb-1 block">标题 *</label>
-              <Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="如：GitHub 账号" />
-            </div>
-          </div>
+          {/* 1. 标题 */}
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">用户名 / 邮箱 / 手机号</label>
-            <Input value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="如：user@example.com" />
+            <label className="text-xs text-gray-500 mb-1 block">标题 *</label>
+            <Input value={form.title} onChange={e => set('title', e.target.value)} placeholder="如：GitHub 账号" />
           </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">密码 / 密钥 *</label>
-            <Input value={form.secret} onChange={e => setForm({ ...form, secret: e.target.value })} placeholder="明文密码，保存后加密存储" />
-          </div>
+
+          {/* 2. 关联网址 */}
           <div>
             <label className="text-xs text-gray-500 mb-1 block">关联网址</label>
-            <Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..." />
+            <Input value={form.url} onChange={e => set('url', e.target.value)} placeholder="https://..." />
           </div>
+
+          {/* 3. 用户名 */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">用户名</label>
+            <Input value={form.username} onChange={e => set('username', e.target.value)} placeholder="登录用户名" />
+          </div>
+
+          {/* 4. 手机号 + 登录方式 */}
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">手机号</label>
+              <Input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="可选" inputMode="tel" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">支持的登录方式（可多选）</label>
+              <div className="grid grid-cols-2 gap-2">
+                {LOGIN_METHODS.map(m => {
+                  const checked = Array.isArray(form.login_methods) && form.login_methods.includes(m.value);
+                  return (
+                    <button key={m.value} type="button"
+                      onClick={() => toggleLoginMethod(m.value)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-colors ${
+                        checked
+                          ? 'bg-[#bbea3b]/20 border-[#bbea3b] text-black'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                      aria-pressed={checked}
+                    >
+                      {checked
+                        ? <CheckSquare className="w-4 h-4 text-[#7ea82a] flex-shrink-0" />
+                        : <Square className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+                      <span className="truncate">{m.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 5. 邮箱 */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">邮箱</label>
+            <Input value={form.email} onChange={e => set('email', e.target.value)} placeholder="可选" inputMode="email" />
+          </div>
+
+          {/* 6. 分类 */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">分类</label>
+            <Select value={form.category} onValueChange={v => set('category', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 7. 密码 */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">密码 / 密钥 *</label>
+            <Input value={form.secret} onChange={e => set('secret', e.target.value)} placeholder="明文密码，保存后加密存储" />
+          </div>
+
+          {/* 8. 备注 */}
           <div>
             <label className="text-xs text-gray-500 mb-1 block">备注</label>
-            <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="加密存储的补充信息" />
+            <Textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="加密存储的补充信息" />
           </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant={form.is_active ? 'default' : 'outline'} size="sm"
-              onClick={() => setForm({ ...form, is_active: !form.is_active })}
-              className={form.is_active ? 'bg-green-500 hover:bg-green-600 text-white' : ''}>
-              <Power className="w-3 h-3 mr-1" /> {form.is_active ? '使用中' : '已废弃'}
-            </Button>
+
+          {/* 9. 状态下拉 */}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">状态</label>
+            <Select value={form.is_active ? 'active' : 'inactive'} onValueChange={v => set('is_active', v === 'active')}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">使用中</SelectItem>
+                <SelectItem value="inactive">已废弃</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>
@@ -417,7 +502,24 @@ const VaultPage = () => {
                           ? <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
                           : <Badge variant="secondary" className="text-xs text-gray-400 flex-shrink-0">废弃</Badge>}
                       </div>
-                      {item.username && <div className="text-xs text-gray-500 mt-0.5 truncate">{item.username}</div>}
+                      {/* 联系方式区：用户名 / 手机号 / 邮箱 */}
+                      {(item.username || item.phone || item.email) && (
+                        <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {item.username && <span className="truncate">用户名: {item.username}</span>}
+                          {item.phone && <span className="truncate">手机: {item.phone}</span>}
+                          {item.email && <span className="truncate">邮箱: {item.email}</span>}
+                        </div>
+                      )}
+                      {/* 登录方式标签 */}
+                      {Array.isArray(item.login_methods) && item.login_methods.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap mt-1">
+                          {item.login_methods.map(m => (
+                            <span key={m} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
+                              {getLoginMethodLabel(m)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {item.url && (
                         <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline mt-0.5 inline-flex items-center gap-0.5 min-w-0 max-w-full">
                           <span className="truncate">{item.url.replace(/^https?:\/\//, '').slice(0, 40)}</span>
@@ -443,7 +545,7 @@ const VaultPage = () => {
                       <Button variant="ghost" size="sm" onClick={() => toggleActive(item)} className="h-7 px-2 text-xs" title={item.is_active ? '标记废弃' : '恢复使用'}>
                         <Power className="w-3 h-3" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setItemDialog({ open: true, initial: item })} className="h-7 px-2 text-xs">编辑</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setItemDialog({ open: true, initial: { ...item, ...data } })} className="h-7 px-2 text-xs">编辑</Button>
                       <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(item)} className="h-7 px-2 text-xs text-red-500">
                         <Trash2 className="w-3 h-3" />
                       </Button>
